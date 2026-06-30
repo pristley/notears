@@ -78,7 +78,11 @@ fn test_learn_dag_high_lambda() {
     match learn_dag(&data_std, 0.9, 0.3, None) {
         Ok(result) => {
             // Sparse solution expected
-            let edges = result.weight_matrix.iter().filter(|x| x.abs() > 0.01).count();
+            let edges = result
+                .weight_matrix
+                .iter()
+                .filter(|x| x.abs() > 0.01)
+                .count();
             assert!(edges <= d * d / 2);
         }
         Err(_) => {}
@@ -337,7 +341,11 @@ fn test_learn_dag_edge_count_monotonicity() {
     match (result_strict, result_lenient) {
         (Ok(r_strict), Ok(r_lenient)) => {
             let edges_strict = r_strict.adjacency_matrix.iter().filter(|x| **x > 0).count();
-            let edges_lenient = r_lenient.adjacency_matrix.iter().filter(|x| **x > 0).count();
+            let edges_lenient = r_lenient
+                .adjacency_matrix
+                .iter()
+                .filter(|x| **x > 0)
+                .count();
 
             assert!(edges_lenient >= edges_strict);
         }
@@ -358,10 +366,21 @@ fn test_learn_dag_sparsity_vs_lambda() {
 
     match (result_low_lambda, result_high_lambda) {
         (Ok(r_low), Ok(r_high)) => {
-            let edges_low = r_low.weight_matrix.iter().filter(|x| x.abs() > 0.01).count();
-            let edges_high = r_high.weight_matrix.iter().filter(|x| x.abs() > 0.01).count();
+            let edges_low = r_low
+                .weight_matrix
+                .iter()
+                .filter(|x| x.abs() > 0.01)
+                .count();
+            let edges_high = r_high
+                .weight_matrix
+                .iter()
+                .filter(|x| x.abs() > 0.01)
+                .count();
 
-            assert!(edges_high <= edges_low, "Higher λ should give sparser solution");
+            assert!(
+                edges_high <= edges_low,
+                "Higher λ should give sparser solution"
+            );
         }
         _ => {}
     }

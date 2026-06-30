@@ -3,7 +3,6 @@
 /// The acyclicity constraint h(W) = tr(exp(W ∘ W^T)) - d ensures the learned
 /// weight matrix W corresponds to a DAG (directed acyclic graph).
 /// It equals 0 iff W is acyclic, and is differentiable everywhere.
-
 use crate::types::WeightMatrix;
 use crate::utils;
 use ndarray::Array2;
@@ -30,7 +29,7 @@ pub enum AcyclicityError {
 ///
 /// # Returns
 /// Scalar constraint value h(W) ∈ [0, ∞)
-/// 
+///
 /// # Mathematical Notes
 /// - For acyclic W: h(W) = 0 (within floating-point precision ~1e-14)
 /// - For cyclic W: h(W) > 0, proportional to number/strength of cycles
@@ -41,10 +40,7 @@ pub enum AcyclicityError {
 pub fn acyclicity_constraint(weight_matrix: &WeightMatrix) -> Result<f64, AcyclicityError> {
     let (n, m) = weight_matrix.dim();
     if n != m {
-        return Err(AcyclicityError::NonSquareMatrix {
-            rows: n,
-            cols: m,
-        });
+        return Err(AcyclicityError::NonSquareMatrix { rows: n, cols: m });
     }
 
     // Compute W ⊙ W (element-wise squaring via Hadamard product)
@@ -63,7 +59,10 @@ pub fn acyclicity_constraint(weight_matrix: &WeightMatrix) -> Result<f64, Acycli
 
     // Numerical stability warning
     if h > 100.0 {
-        eprintln!("Warning: acyclicity constraint h(W) = {:.2} is very large; check for numerical issues", h);
+        eprintln!(
+            "Warning: acyclicity constraint h(W) = {:.2} is very large; check for numerical issues",
+            h
+        );
     }
 
     Ok(h)
@@ -93,10 +92,7 @@ pub fn acyclicity_constraint(weight_matrix: &WeightMatrix) -> Result<f64, Acycli
 pub fn acyclicity_gradient(weight_matrix: &WeightMatrix) -> Result<WeightMatrix, AcyclicityError> {
     let (n, m) = weight_matrix.dim();
     if n != m {
-        return Err(AcyclicityError::NonSquareMatrix {
-            rows: n,
-            cols: m,
-        });
+        return Err(AcyclicityError::NonSquareMatrix { rows: n, cols: m });
     }
 
     // Step 1: Compute W_squared = w ⊙ w (element-wise squaring)
@@ -136,10 +132,7 @@ pub fn acyclicity_with_gradient(
 ) -> Result<(f64, WeightMatrix), AcyclicityError> {
     let (n, m) = weight_matrix.dim();
     if n != m {
-        return Err(AcyclicityError::NonSquareMatrix {
-            rows: n,
-            cols: m,
-        });
+        return Err(AcyclicityError::NonSquareMatrix { rows: n, cols: m });
     }
 
     // Compute W ⊙ W (element-wise squaring)
@@ -207,23 +200,23 @@ mod tests {
         // Verify gradient via finite differences: ∇h ≈ (h(W+ε) - h(W-ε))/(2ε)
         let w = ndarray::array![[0.0, 0.1], [-0.1, 0.0]];
         let grad = acyclicity_gradient(&w).unwrap();
-        
+
         let epsilon = 1e-5;
         let mut fd_grad = Array2::zeros((2, 2));
-        
+
         for i in 0..2 {
             for j in 0..2 {
                 let mut w_plus = w.clone();
                 let mut w_minus = w.clone();
                 w_plus[[i, j]] += epsilon;
                 w_minus[[i, j]] -= epsilon;
-                
+
                 let h_plus = acyclicity_constraint(&w_plus).unwrap();
                 let h_minus = acyclicity_constraint(&w_minus).unwrap();
                 fd_grad[[i, j]] = (h_plus - h_minus) / (2.0 * epsilon);
             }
         }
-        
+
         // Check against analytical gradient
         for i in 0..2 {
             for j in 0..2 {
@@ -241,7 +234,7 @@ mod tests {
 
         // Check h consistency
         assert_abs_diff_eq!(h1, h2, epsilon = 1e-12);
-        
+
         // Check gradient consistency (element-wise)
         for i in 0..2 {
             for j in 0..2 {
@@ -260,9 +253,7 @@ mod tests {
 
     #[test]
     fn test_gradient_shape() {
-        let w = ndarray::array![[0.0, 0.1, 0.2], 
-                                [-0.1, 0.0, 0.3],
-                                [-0.2, -0.3, 0.0]];
+        let w = ndarray::array![[0.0, 0.1, 0.2], [-0.1, 0.0, 0.3], [-0.2, -0.3, 0.0]];
         let grad = acyclicity_gradient(&w).unwrap();
         assert_eq!(grad.dim(), (3, 3));
     }
@@ -273,7 +264,7 @@ mod tests {
         let w = ndarray::array![[0.0, 1e-10], [-1e-10, 0.0]];
         let h = acyclicity_constraint(&w).unwrap();
         let grad = acyclicity_gradient(&w).unwrap();
-        
+
         // Should still compute without NaN/Inf
         assert!(h.is_finite());
         assert!(grad.iter().all(|x| x.is_finite()));

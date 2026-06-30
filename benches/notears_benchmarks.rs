@@ -2,10 +2,9 @@
 ///
 /// Run with: cargo bench --release
 /// HTML reports in: target/criterion/
-
-use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId};
-use notears::*;
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 use ndarray::Array2;
+use notears::*;
 use rand::Rng;
 
 /// Generate synthetic data with known DAG structure
@@ -29,9 +28,7 @@ fn benchmark_acyclicity_constraint(c: &mut Criterion) {
     for dim in [5, 10, 20, 50].iter() {
         group.bench_with_input(BenchmarkId::from_parameter(dim), dim, |b, &dim| {
             let w = Array2::zeros((dim, dim));
-            b.iter(|| {
-                acyclicity::acyclicity_constraint(black_box(&w))
-            });
+            b.iter(|| acyclicity::acyclicity_constraint(black_box(&w)));
         });
     }
 
@@ -44,9 +41,7 @@ fn benchmark_acyclicity_gradient(c: &mut Criterion) {
     for dim in [5, 10, 20].iter() {
         group.bench_with_input(BenchmarkId::from_parameter(dim), dim, |b, &dim| {
             let w = Array2::zeros((dim, dim));
-            b.iter(|| {
-                acyclicity::acyclicity_gradient(black_box(&w))
-            });
+            b.iter(|| acyclicity::acyclicity_gradient(black_box(&w)));
         });
     }
 
@@ -59,9 +54,7 @@ fn benchmark_matrix_exponential(c: &mut Criterion) {
     for dim in [5, 10, 20, 50].iter() {
         group.bench_with_input(BenchmarkId::from_parameter(dim), dim, |b, &dim| {
             let w = Array2::zeros((dim, dim));
-            b.iter(|| {
-                utils::matrix_exponential(black_box(&w))
-            });
+            b.iter(|| utils::matrix_exponential(black_box(&w)));
         });
     }
 
@@ -79,9 +72,7 @@ fn benchmark_mse_loss(c: &mut Criterion) {
             |b, &n_samples| {
                 let data = generate_synthetic_dag(n_samples, dim, 0.1);
                 let w = Array2::zeros((dim, dim));
-                b.iter(|| {
-                    scoring::mse_loss(black_box(&data), black_box(&w))
-                });
+                b.iter(|| scoring::mse_loss(black_box(&data), black_box(&w)));
             },
         );
     }
@@ -99,9 +90,7 @@ fn benchmark_standardize_data(c: &mut Criterion) {
             n_samples,
             |b, &n_samples| {
                 let data = generate_synthetic_dag(n_samples, dim, 0.1);
-                b.iter(|| {
-                    utils::standardize_data(black_box(&data))
-                });
+                b.iter(|| utils::standardize_data(black_box(&data)));
             },
         );
     }

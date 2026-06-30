@@ -5,17 +5,13 @@
 /// - L1 regularization for sparsity
 ///
 /// The total loss is F(W) = data_fidelity(W) + λ * L1(W)
-
-use crate::types::{WeightMatrix, DataMatrix, RegularizationConfig};
+use crate::types::{DataMatrix, RegularizationConfig, WeightMatrix};
 
 /// Error types for loss computation
 #[derive(Debug, thiserror::Error)]
 pub enum ScoringError {
     #[error("Dimension mismatch: data has {data_vars} variables but weight matrix is {weight_dim}×{weight_dim}")]
-    DimensionMismatch {
-        data_vars: usize,
-        weight_dim: usize,
-    },
+    DimensionMismatch { data_vars: usize, weight_dim: usize },
 
     #[error("Empty data matrix")]
     EmptyData,
@@ -159,7 +155,7 @@ pub fn score_function(
     }
 
     // **Component 1: Least-squares loss ℓ(W; X) = (1/(2n)) * ||X - XW||²_F**
-    
+
     // Step 1: Compute residual matrix R = X - X @ W
     let xw = data.dot(w);
     let residuals = data - &xw;
@@ -186,7 +182,6 @@ pub fn score_function(
 
     Ok(score)
 }
-
 
 /// Compute total loss: F(W) = MSE(W) + λ1 * L1(W)
 ///
@@ -223,7 +218,10 @@ pub fn total_loss(
 ///
 /// # Returns
 /// Gradient matrix with same shape as weight_matrix
-pub fn mse_gradient(data: &DataMatrix, weight_matrix: &WeightMatrix) -> Result<WeightMatrix, ScoringError> {
+pub fn mse_gradient(
+    data: &DataMatrix,
+    weight_matrix: &WeightMatrix,
+) -> Result<WeightMatrix, ScoringError> {
     let (n, d) = data.dim();
     let (w_rows, w_cols) = weight_matrix.dim();
 
@@ -355,7 +353,7 @@ pub fn score_gradient(
     }
 
     // **Component 1: Gradient of LS loss ∇ℓ(W; X) = -(1/n) X^T @ (X - XW)**
-    
+
     // Step 1: Compute residual R = X - X @ W
     let xw = data.dot(w);
     let residuals = data - &xw;
@@ -379,15 +377,15 @@ pub fn score_gradient(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ndarray::Array2;
     use approx::assert_abs_diff_eq;
+    use ndarray::Array2;
 
     #[test]
     fn test_mse_zero_weights() {
         let data = ndarray::array![[1.0, 2.0], [3.0, 4.0]];
         let weights = Array2::zeros((2, 2));
         let mse = mse_loss(&data, &weights).unwrap();
-        
+
         // With W=0, residuals = data
         // ||residuals||²_F = 1 + 4 + 9 + 16 = 30
         // MSE = ||residuals||²_F / (2*n) = 30 / (2*2) = 7.5
@@ -424,7 +422,7 @@ mod tests {
         let weights = Array2::zeros((2, 2));
         let config = RegularizationConfig::new(0.1, false).unwrap();
         let score = score_function(&weights, &data, &config).unwrap();
-        
+
         // With W=0 and lambda=0.1:
         // F(W) = (1/(2n)) * ||X - X@W||²_F + 0.1 * ||W||_1
         // = (1/4) * 30 + 0.1 * 0 = 7.5
@@ -437,7 +435,7 @@ mod tests {
         let weights = ndarray::array![[0.5, 0.0], [0.0, 0.5]];
         let config = RegularizationConfig::new(0.1, false).unwrap();
         let score = score_function(&weights, &data, &config).unwrap();
-        
+
         // F(W) = loss_ls + 0.1 * ||W||_1
         // Loss should be lower with non-zero W (fitting the data better)
         // L1 penalty = 0.1 * (0.5 + 0.5) = 0.1
@@ -460,12 +458,12 @@ mod tests {
         let weights = ndarray::array![[0.1, 0.2], [-0.1, 0.3]];
         let lambda = 0.2;
         let config = RegularizationConfig::new(lambda, false).unwrap();
-        
+
         let score = score_function(&weights, &data, &config).unwrap();
         let ls_loss = mse_loss(&data, &weights).unwrap();
         let l1_pen = l1_penalty(&weights);
         let expected = ls_loss + lambda * l1_pen;
-        
+
         assert_abs_diff_eq!(score, expected, epsilon = 1e-12);
     }
 
@@ -474,13 +472,13 @@ mod tests {
         // Verify score component decomposition with different regularization strengths
         let data = ndarray::array![[1.0, 2.0], [3.0, 4.0]];
         let weights = ndarray::array![[0.1, 0.2], [-0.1, 0.3]];
-        
+
         // With lambda=0 (no regularization), score equals LS loss only
         let config_no_reg = RegularizationConfig::new(0.0, false).unwrap();
         let score_no_reg = score_function(&weights, &data, &config_no_reg).unwrap();
         let loss_only = mse_loss(&data, &weights).unwrap();
         assert_abs_diff_eq!(score_no_reg, loss_only, epsilon = 1e-12);
-        
+
         // With lambda > 0, score = loss + regularization term
         let config_reg = RegularizationConfig::new(0.5, false).unwrap();
         let score_with_reg = score_function(&weights, &data, &config_reg).unwrap();
@@ -495,11 +493,11 @@ mod tests {
         let weights = Array2::zeros((2, 2));
         let config = RegularizationConfig::new(0.1, false).unwrap();
         let grad = score_gradient(&weights, &data, &config).unwrap();
-        
+
         // With W=0, residuals = X, so ∇ℓ = -(1/n) * X^T @ X
         // ∇||W||₁ = 0 (all zero weights have zero subgradient)
         let expected_grad_ls = data.t().dot(&data) * (-1.0 / 2.0);
-        
+
         for i in 0..2 {
             for j in 0..2 {
                 assert_abs_diff_eq!(grad[[i, j]], expected_grad_ls[[i, j]], epsilon = 1e-12);
@@ -509,14 +507,11 @@ mod tests {
 
     #[test]
     fn test_score_gradient_shape() {
-        let data = ndarray::array![[1.0, 2.0, 3.0], 
-                                   [4.0, 5.0, 6.0]];
-        let weights = ndarray::array![[0.1, 0.0, 0.2],
-                                      [0.0, 0.3, 0.0],
-                                      [0.1, 0.0, 0.2]];
+        let data = ndarray::array![[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]];
+        let weights = ndarray::array![[0.1, 0.0, 0.2], [0.0, 0.3, 0.0], [0.1, 0.0, 0.2]];
         let config = RegularizationConfig::new(0.2, false).unwrap();
         let grad = score_gradient(&weights, &data, &config).unwrap();
-        
+
         // Shape must match weight matrix
         assert_eq!(grad.dim(), (3, 3));
     }
@@ -524,34 +519,36 @@ mod tests {
     #[test]
     fn test_score_gradient_finite_difference() {
         // Verify gradient via finite differences: ∇F ≈ (F(W+ε) - F(W-ε))/(2ε)
-        let data = ndarray::array![[1.0, 2.0], 
-                                   [3.0, 4.0],
-                                   [5.0, 6.0]];
+        let data = ndarray::array![[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]];
         let w = ndarray::array![[0.1, 0.05], [-0.05, 0.2]];
         let config = RegularizationConfig::new(0.15, false).unwrap();
-        
+
         let grad_analytical = score_gradient(&w, &data, &config).unwrap();
-        
+
         let epsilon = 1e-5;
         let mut grad_numerical = Array2::zeros((2, 2));
-        
+
         for i in 0..2 {
             for j in 0..2 {
                 let mut w_plus = w.clone();
                 let mut w_minus = w.clone();
                 w_plus[[i, j]] += epsilon;
                 w_minus[[i, j]] -= epsilon;
-                
+
                 let f_plus = score_function(&w_plus, &data, &config).unwrap();
                 let f_minus = score_function(&w_minus, &data, &config).unwrap();
                 grad_numerical[[i, j]] = (f_plus - f_minus) / (2.0 * epsilon);
             }
         }
-        
+
         // Check element-wise accuracy
         for i in 0..2 {
             for j in 0..2 {
-                assert_abs_diff_eq!(grad_analytical[[i, j]], grad_numerical[[i, j]], epsilon = 1e-4);
+                assert_abs_diff_eq!(
+                    grad_analytical[[i, j]],
+                    grad_numerical[[i, j]],
+                    epsilon = 1e-4
+                );
             }
         }
     }
@@ -563,12 +560,12 @@ mod tests {
         let weights = ndarray::array![[0.2, -0.1], [0.3, 0.0]];
         let lambda = 0.25;
         let config = RegularizationConfig::new(lambda, false).unwrap();
-        
+
         let grad_full = score_gradient(&weights, &data, &config).unwrap();
         let grad_ls = mse_gradient(&data, &weights).unwrap();
         let grad_l1 = l1_gradient(&weights);
         let expected = grad_ls + &grad_l1 * lambda;
-        
+
         for i in 0..2 {
             for j in 0..2 {
                 assert_abs_diff_eq!(grad_full[[i, j]], expected[[i, j]], epsilon = 1e-12);
@@ -582,9 +579,9 @@ mod tests {
         let data = ndarray::array![[1.0, 2.0], [3.0, 4.0]];
         let weights = ndarray::array![[0.5, -0.3], [0.0, 0.1]];
         let config = RegularizationConfig::new(1.0, false).unwrap();
-        
+
         let grad = score_gradient(&weights, &data, &config).unwrap();
-        
+
         // Extract L₁ component (at high lambda, should dominate for small LS gradients)
         // At least verify sign patterns exist
         assert!(grad.iter().any(|x| x.abs() > 0.0));
@@ -597,15 +594,15 @@ mod tests {
         let data = ndarray::array![[1.0, 2.0], [3.0, 4.0]];
         let weights = ndarray::array![[0.1, 0.05], [0.05, 0.1]];
         let config = RegularizationConfig::new(0.1, false).unwrap();
-        
+
         let f_current = score_function(&weights, &data, &config).unwrap();
         let grad = score_gradient(&weights, &data, &config).unwrap();
-        
+
         // Take small step in negative gradient direction
         let step_size = 0.01;
         let weights_new = &weights - &grad * step_size;
         let f_new = score_function(&weights_new, &data, &config).unwrap();
-        
+
         // Loss should decrease (f_new < f_current) with small enough step
         assert!(f_new < f_current, "Gradient descent should reduce loss");
     }
@@ -632,9 +629,9 @@ mod tests {
         let data = ndarray::array![[1e-10, 2e-10], [3e-10, 4e-10]];
         let weights = ndarray::array![[1e-15, -1e-15], [1e-15, 1e-15]];
         let config = RegularizationConfig::new(0.1, false).unwrap();
-        
+
         let grad = score_gradient(&weights, &data, &config).unwrap();
-        
+
         // Should still compute without NaN/Inf
         assert!(grad.iter().all(|x| x.is_finite()));
     }

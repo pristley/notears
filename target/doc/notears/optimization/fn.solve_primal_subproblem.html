@@ -1,0 +1,80 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Solve the primal subproblem using L-BFGS optimizer"><title>solve_primal_subproblem in notears::optimization - Rust</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Italic-81dc35de.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-MediumItalic-ccf7e434.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2"href="../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../../static.files/rustdoc-17e0aaed.css"><meta name="rustdoc-vars" data-root-path="../../" data-static-root-path="../../static.files/" data-current-crate="notears" data-themes="" data-resource-suffix="" data-rustdoc-version="1.96.1 (31fca3adb 2026-06-26)" data-channel="1.96.1" data-search-js="search-b5634cc7.js" data-stringdex-js="stringdex-2da4960a.js" data-settings-js="settings-170eb4bf.js" ><script src="../../static.files/storage-41dd4d93.js"></script><script defer src="sidebar-items.js"></script><script defer src="../../static.files/main-5013f961.js"></script><noscript><link rel="stylesheet" href="../../static.files/noscript-f7c3ffd8.css"></noscript><link rel="alternate icon" type="image/png" href="../../static.files/favicon-32x32-eab170b8.png"><link rel="icon" type="image/svg+xml" href="../../static.files/favicon-044be391.svg"></head><body class="rustdoc fn"><a class="skip-main-content" href="#main-content">Skip to main content</a><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><rustdoc-topbar><h2><a href="#">solve_primal_subproblem</a></h2></rustdoc-topbar><nav class="sidebar"><div class="sidebar-crate"><h2><a href="../../notears/index.html">notears</a><span class="version">0.1.0</span></h2></div><div class="sidebar-elems"><section id="rustdoc-toc"><h2 class="location"><a href="#">solve_<wbr>primal_<wbr>subproblem</a></h2><h3><a href="#">Sections</a></h3><ul class="block top-toc"><li><a href="#arguments" title="Arguments">Arguments</a></li><li><a href="#returns" title="Returns">Returns</a></li><li><a href="#errors" title="Errors">Errors</a></li><li><a href="#numerical-stability" title="Numerical Stability">Numerical Stability</a></li><li><a href="#performance-notes" title="Performance Notes">Performance Notes</a></li></ul></section><div id="rustdoc-modnav"><h2><a href="index.html">In notears::<wbr>optimization</a></h2></div></div></nav><div class="sidebar-resizer" title="Drag to resize sidebar"></div><main><div class="width-limiter"><section id="main-content" class="content" tabindex="-1"><div class="main-heading"><div class="rustdoc-breadcrumbs"><a href="../index.html">notears</a>::<wbr><a href="index.html">optimization</a></div><h1>Function <span class="fn">solve_<wbr>primal_<wbr>subproblem</span>&nbsp;<button id="copy-path" title="Copy item path to clipboard">Copy item path</button></h1><rustdoc-toolbar></rustdoc-toolbar><span class="sub-heading"><a class="src" href="../../src/notears/optimization.rs.html#722-789">Source</a> </span></div><pre class="rust item-decl"><code>pub fn solve_primal_subproblem(
+    w_init: &amp;<a class="type" href="../types/type.WeightMatrix.html" title="type notears::types::WeightMatrix">WeightMatrix</a>,
+    alpha: <a class="primitive" href="https://doc.rust-lang.org/1.96.1/std/primitive.f64.html">f64</a>,
+    rho: <a class="primitive" href="https://doc.rust-lang.org/1.96.1/std/primitive.f64.html">f64</a>,
+    data: &amp;<a class="type" href="../types/type.DataMatrix.html" title="type notears::types::DataMatrix">DataMatrix</a>,
+    config: &amp;<a class="struct" href="../types/struct.RegularizationConfig.html" title="struct notears::types::RegularizationConfig">RegularizationConfig</a>,
+    optimizer_config: &amp;<a class="struct" href="../types/struct.OptimizationConfig.html" title="struct notears::types::OptimizationConfig">OptimizationConfig</a>,
+) -&gt; <a class="enum" href="https://doc.rust-lang.org/1.96.1/core/result/enum.Result.html" title="enum core::result::Result">Result</a>&lt;(<a class="type" href="../types/type.WeightMatrix.html" title="type notears::types::WeightMatrix">WeightMatrix</a>, <a class="primitive" href="https://doc.rust-lang.org/1.96.1/std/primitive.usize.html">usize</a>), <a class="enum" href="enum.OptimizationError.html" title="enum notears::optimization::OptimizationError">OptimizationError</a>&gt;</code></pre><details class="toggle top-doc" open><summary class="hideme"><span>Expand description</span></summary><div class="docblock"><p>Solve the primal subproblem using L-BFGS optimizer</p>
+<p><strong>Purpose</strong>: Inner loop of augmented Lagrangian method</p>
+<ul>
+<li>Minimizes L_ρ(W, α) for fixed α and ρ</li>
+<li>Uses L-BFGS quasi-Newton method</li>
+<li>Stops when ||∇_W L_ρ|| &lt; 1e-6 or max_iters reached</li>
+</ul>
+<p><strong>Algorithm Overview</strong>:
+L-BFGS is a limited-memory quasi-Newton method that:</p>
+<ol>
+<li>Maintains rank-limited BFGS approximation to Hessian</li>
+<li>Uses line search (Armijo-Wolfe) for step acceptance</li>
+<li>Achieves superlinear convergence near optimum</li>
+<li>Scales to d² variables without explicit Hessian</li>
+</ol>
+<p><strong>Mathematical Framework</strong>:
+Minimize: L_ρ(W, α) = F(W) + (ρ/2)<em>h(W)² + α</em>h(W)
+where:</p>
+<ul>
+<li>F(W) = (1/(2n))||X - XW||²_F + λ||W||₁ (score function)</li>
+<li>h(W) = tr(exp(W ⊙ W)) - d (acyclicity constraint)</li>
+<li>∇_W L_ρ = ∇F + (ρ<em>h + α)</em>∇h (gradient)</li>
+</ul>
+<p><strong>Convergence Properties</strong>:</p>
+<ul>
+<li>Theory: R-superlinear convergence near optimum</li>
+<li>Practice: 50-100 iterations for d ≤ 50</li>
+<li>Early stopping: ||∇_W L_ρ|| &lt; 1e-6</li>
+</ul>
+<p><strong>Hyperparameters</strong>:</p>
+<ul>
+<li><code>lbfgs_memory</code>: Rank of Hessian approximation (10-20)</li>
+<li><code>max_lbfgs_iterations</code>: Max inner loop steps (100-200)</li>
+<li>Tolerance: 1e-5 (first-order optimality)</li>
+<li>Line search: Armijo + Wolfe conditions</li>
+</ul>
+<h2 id="arguments"><a class="doc-anchor" href="#arguments">§</a>Arguments</h2>
+<ul>
+<li><code>w_init</code> - Initial weight matrix W₀ ∈ ℝ^{d×d}</li>
+<li><code>alpha</code> - Lagrange multiplier (fixed during primal solve)</li>
+<li><code>rho</code> - Penalty parameter (fixed during primal solve)</li>
+<li><code>data</code> - Data matrix X ∈ ℝ^{n×d}</li>
+<li><code>config</code> - Regularization config with λ ≥ 0</li>
+<li><code>optimizer_config</code> - Optimization parameters</li>
+</ul>
+<h2 id="returns"><a class="doc-anchor" href="#returns">§</a>Returns</h2>
+<ul>
+<li><code>W_opt</code>: Optimized weight matrix (local minimum of L_ρ)</li>
+<li><code>iterations</code>: Number of L-BFGS iterations performed</li>
+</ul>
+<h2 id="errors"><a class="doc-anchor" href="#errors">§</a>Errors</h2>
+<p>Returns OptimizationError if:</p>
+<ul>
+<li>Vector-matrix reshaping fails (dimension mismatch)</li>
+<li>L-BFGS solver fails to initialize</li>
+<li>Objective/gradient evaluation errors</li>
+<li>NaN/Inf detected during optimization</li>
+</ul>
+<h2 id="numerical-stability"><a class="doc-anchor" href="#numerical-stability">§</a>Numerical Stability</h2>
+<ul>
+<li>Gradient clipping: ||∇L_ρ|| ≤ 1e6</li>
+<li>NaN detection: Stop if objective becomes non-finite</li>
+<li>Divergence detection: Stop if gradient norm increases</li>
+<li>Memory: O(d² + m*d) where m = LBFGS memory</li>
+</ul>
+<h2 id="performance-notes"><a class="doc-anchor" href="#performance-notes">§</a>Performance Notes</h2>
+<ul>
+<li>Single iteration cost: O(n*d² + d³) [gradient + matrix exponential]</li>
+<li>For d=50, n=1000: ~100 iterations = 1-2 seconds</li>
+<li>Scaling: O(d³) dominated by matrix exponential</li>
+<li>Bottleneck: acyclicity_gradient computation</li>
+</ul>
+</div></details></section></div></main></body></html>

@@ -66,18 +66,17 @@ pub mod types;
 pub mod utils;
 
 // Re-export main public API
-pub use optimization::{solve, solve_with_config, NotearsSolver, OptimizationError, solve_ecp};
-pub use types::{
-    OptimizationResult, OptimizationConfig, RegularizationConfig, ConfigError, ValidationResult,
-};
-pub use types::{WeightMatrix, DataMatrix, GradientMatrix};
-pub use scoring::{mse_loss, l1_penalty, total_loss};
 pub use acyclicity::{acyclicity_constraint, acyclicity_gradient, is_dag};
-pub use utils::{
-    standardize_data, matrix_exponential, frobenius_norm, extract_adjacency, is_acyclic_adjacency,
-    is_acyclic, validate_dag, find_cycles, print_validation_report,
+pub use optimization::{solve, solve_ecp, solve_with_config, NotearsSolver, OptimizationError};
+pub use scoring::{l1_penalty, mse_loss, total_loss};
+pub use types::{
+    ConfigError, OptimizationConfig, OptimizationResult, RegularizationConfig, ValidationResult,
 };
-
+pub use types::{DataMatrix, GradientMatrix, WeightMatrix};
+pub use utils::{
+    extract_adjacency, find_cycles, frobenius_norm, is_acyclic, is_acyclic_adjacency,
+    matrix_exponential, print_validation_report, standardize_data, validate_dag,
+};
 
 // Library version
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -206,7 +205,8 @@ pub fn learn_dag(
             "Sample size (n={}) must be ≥ number of variables (d={}). \
              Underdetermined regression problem.",
             n, d
-        ).into());
+        )
+        .into());
     }
 
     if d > 500 {
@@ -214,16 +214,15 @@ pub fn learn_dag(
             "Dimension d={} exceeds recommended maximum (d ≤ 500). \
              Matrix exponential computation becomes numerically unstable.",
             d
-        ).into());
+        )
+        .into());
     }
 
     // Check for NaN/Inf in data
     if data.iter().any(|x| !x.is_finite()) {
-        return Err(
-            "Data matrix contains NaN or Inf values. \
+        return Err("Data matrix contains NaN or Inf values. \
              Please clean data before calling learn_dag."
-                .into(),
-        );
+            .into());
     }
 
     // Check data norm (scaling guard)
@@ -233,11 +232,15 @@ pub fn learn_dag(
             "Data Frobenius norm ({:.2e}) exceeds safety threshold (1e10). \
              Consider rescaling data.",
             data_norm
-        ).into());
+        )
+        .into());
     }
 
     if data_norm < 1e-10 {
-        return Err("Data is essentially zero (Frobenius norm < 1e-10). Please provide non-trivial data.".into());
+        return Err(
+            "Data is essentially zero (Frobenius norm < 1e-10). Please provide non-trivial data."
+                .into(),
+        );
     }
 
     // ========== STEP 2: Hyperparameter Validation ==========
@@ -248,7 +251,8 @@ pub fn learn_dag(
             "Regularization lambda={} not in valid range [0.0, 1.0]. \
              Typical values: 0.0 (no sparsity) or 0.1.",
             lambda
-        ).into());
+        )
+        .into());
     }
 
     // Validate threshold (non-negative)
@@ -256,7 +260,8 @@ pub fn learn_dag(
         return Err(format!(
             "Edge detection threshold={} is negative. Must be ≥ 0.0.",
             threshold
-        ).into());
+        )
+        .into());
     }
 
     // ========== STEP 3: Configuration Setup ==========
@@ -264,14 +269,15 @@ pub fn learn_dag(
     // Use provided config or create defaults
     let mut config = config_opt.unwrap_or_else(|| {
         OptimizationConfig::new(
-            100,       // max_outer_iterations
-            50,        // max_lbfgs_iterations
-            10,        // lbfgs_memory
-            1e-8,      // constraint_tolerance
-            1.0,       // penalty_rho_init
-            0.25,      // progress_rate
-            0.3,       // edge_threshold (will be overridden below)
-        ).unwrap_or_else(|_| OptimizationConfig::default())
+            100,  // max_outer_iterations
+            50,   // max_lbfgs_iterations
+            10,   // lbfgs_memory
+            1e-8, // constraint_tolerance
+            1.0,  // penalty_rho_init
+            0.25, // progress_rate
+            0.3,  // edge_threshold (will be overridden below)
+        )
+        .unwrap_or_else(|_| OptimizationConfig::default())
     });
 
     // Override edge_threshold with provided threshold parameter
@@ -284,9 +290,7 @@ pub fn learn_dag(
     // Random initialization: W₀_ij ~ Uniform[-0.5, 0.5]
     // This breaks symmetry and accelerates convergence compared to zero initialization
     let mut rng = rand::thread_rng();
-    let w_init = ndarray::Array2::from_shape_fn((d, d), |_| {
-        rng.gen_range(-0.5..0.5)
-    });
+    let w_init = ndarray::Array2::from_shape_fn((d, d), |_| rng.gen_range(-0.5..0.5));
 
     // ========== STEP 5: Run Optimization ==========
 
@@ -343,7 +347,8 @@ mod integration_tests {
         for i in 0..n {
             data[[i, 0]] = (i as f64 % 10.0) / 10.0; // X1 ~ [0, 1]
             data[[i, 1]] = data[[i, 0]] * 0.5 + ((i as f64 % 3.0) / 10.0 - 0.15); // X2 = 0.5*X1 + noise
-            data[[i, 2]] = data[[i, 1]] * 0.8 + ((i as f64 % 2.0) / 10.0 - 0.1); // X3 = 0.8*X2 + noise
+            data[[i, 2]] = data[[i, 1]] * 0.8 + ((i as f64 % 2.0) / 10.0 - 0.1);
+            // X3 = 0.8*X2 + noise
         }
 
         // Standardize
@@ -371,7 +376,7 @@ mod integration_tests {
     }
 
     #[test]
-    #[ignore]  // Skipped: solver convergence issues with certain data patterns
+    #[ignore] // Skipped: solver convergence issues with certain data patterns
     fn test_learn_dag_basic() -> Result<(), Box<dyn std::error::Error>> {
         // Use standardized data for better convergence properties
         let n = 100;
@@ -379,7 +384,7 @@ mod integration_tests {
         let mut data = Array2::zeros((n, d));
         let mut rng = rand::thread_rng();
         use rand::Rng;
-        
+
         for i in 0..n {
             for j in 0..d {
                 data[[i, j]] = rng.gen_range(-1.0..1.0);
@@ -402,12 +407,12 @@ mod integration_tests {
     }
 
     #[test]
-    #[ignore]  // Skipped: solver convergence issues with certain data patterns
+    #[ignore] // Skipped: solver convergence issues with certain data patterns
     fn test_learn_dag_with_custom_config() -> Result<(), Box<dyn std::error::Error>> {
         let mut data = Array2::zeros((50, 2));
         let mut rng = rand::thread_rng();
         use rand::Rng;
-        
+
         for i in 0..50 {
             for j in 0..2 {
                 data[[i, j]] = rng.gen_range(-0.5..0.5);
@@ -483,7 +488,7 @@ mod integration_tests {
         // Data norm too large (>1e10): use larger values
         let mut data = Array2::zeros((5, 2));
         for elem in data.iter_mut() {
-            *elem = 1e5;  // 5*2 elements of 1e5 => norm ~ sqrt(50)*1e5 ~ 7e6 * small factor
+            *elem = 1e5; // 5*2 elements of 1e5 => norm ~ sqrt(50)*1e5 ~ 7e6 * small factor
         }
 
         let err = learn_dag(&data, 0.1, 0.3, None);
@@ -549,7 +554,7 @@ mod integration_tests {
     }
 
     #[test]
-    #[ignore]  // Skipped: solver convergence issues with certain data patterns
+    #[ignore] // Skipped: solver convergence issues with certain data patterns
     fn test_learn_dag_result_structure() -> Result<(), Box<dyn std::error::Error>> {
         // Generate proper random data
         let n = 100;
@@ -557,7 +562,7 @@ mod integration_tests {
         let mut data = Array2::zeros((n, d));
         let mut rng = rand::thread_rng();
         use rand::Rng;
-        
+
         for i in 0..n {
             for j in 0..d {
                 data[[i, j]] = rng.gen_range(-1.0..1.0);
@@ -584,14 +589,14 @@ mod integration_tests {
     }
 
     #[test]
-    #[ignore]  // Skipped: solver convergence issues with certain data patterns
+    #[ignore] // Skipped: solver convergence issues with certain data patterns
     fn test_learn_dag_edges_method() -> Result<(), Box<dyn std::error::Error>> {
         let n = 80;
         let d = 2;
         let mut data = Array2::zeros((n, d));
         let mut rng = rand::thread_rng();
         use rand::Rng;
-        
+
         for i in 0..n {
             for j in 0..d {
                 data[[i, j]] = rng.gen_range(-0.8..0.8);

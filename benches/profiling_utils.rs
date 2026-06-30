@@ -4,7 +4,6 @@
 /// - Data generation (DAGs, synthetic data)
 /// - Timing instrumentation
 /// - Performance metrics collection
-
 use ndarray::Array2;
 use rand::Rng;
 use std::time::Instant;
@@ -47,12 +46,7 @@ pub fn random_data(n: usize, d: usize) -> Array2<f64> {
 ///
 /// Creates data from: X_i = sum_j W_{ij} * X_j + noise_i
 /// where W is acyclic and noise is standard normal.
-pub fn data_from_sem(
-    n: usize,
-    d: usize,
-    w: &Array2<f64>,
-    noise_scale: f64,
-) -> Array2<f64> {
+pub fn data_from_sem(n: usize, d: usize, w: &Array2<f64>, noise_scale: f64) -> Array2<f64> {
     let mut rng = rand::thread_rng();
     let mut data = Array2::<f64>::zeros((n, d));
 
@@ -79,13 +73,17 @@ pub fn data_from_sem(
 ///
 /// Generates n_nodes nodes with random edges (probability edge_prob).
 /// Ensures acyclicity via topological ordering.
-pub fn generate_erdos_renyi_dag(n_nodes: usize, n_edges_expected: usize, n_samples: usize) -> (Array2<f64>, Array2<f64>) {
+pub fn generate_erdos_renyi_dag(
+    n_nodes: usize,
+    n_edges_expected: usize,
+    n_samples: usize,
+) -> (Array2<f64>, Array2<f64>) {
     let edge_prob = (n_edges_expected as f64) / ((n_nodes * n_nodes) as f64);
     let edge_prob = edge_prob.min(1.0).max(0.0);
-    
+
     let w = random_dag(n_nodes, edge_prob);
     let data = data_from_sem(n_samples, n_nodes, &w, 1.0);
-    
+
     (w, data)
 }
 

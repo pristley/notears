@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["AcyclicityError"],"fn":["acyclicity_constraint","acyclicity_gradient","acyclicity_with_gradient","is_dag"]};

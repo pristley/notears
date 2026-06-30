@@ -1,0 +1,98 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="High-level API for learning directed acyclic graph structure from data"><title>learn_dag in notears - Rust</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Italic-81dc35de.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-MediumItalic-ccf7e434.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2"href="../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../static.files/rustdoc-17e0aaed.css"><meta name="rustdoc-vars" data-root-path="../" data-static-root-path="../static.files/" data-current-crate="notears" data-themes="" data-resource-suffix="" data-rustdoc-version="1.96.1 (31fca3adb 2026-06-26)" data-channel="1.96.1" data-search-js="search-b5634cc7.js" data-stringdex-js="stringdex-2da4960a.js" data-settings-js="settings-170eb4bf.js" ><script src="../static.files/storage-41dd4d93.js"></script><script defer src="sidebar-items.js"></script><script defer src="../static.files/main-5013f961.js"></script><noscript><link rel="stylesheet" href="../static.files/noscript-f7c3ffd8.css"></noscript><link rel="alternate icon" type="image/png" href="../static.files/favicon-32x32-eab170b8.png"><link rel="icon" type="image/svg+xml" href="../static.files/favicon-044be391.svg"></head><body class="rustdoc fn"><a class="skip-main-content" href="#main-content">Skip to main content</a><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><rustdoc-topbar><h2><a href="#">learn_dag</a></h2></rustdoc-topbar><nav class="sidebar"><div class="sidebar-crate"><h2><a href="../notears/index.html">notears</a><span class="version">0.1.0</span></h2></div><div class="sidebar-elems"><section id="rustdoc-toc"><h2 class="location"><a href="#">learn_<wbr>dag</a></h2><h3><a href="#">Sections</a></h3><ul class="block top-toc"><li><a href="#arguments" title="Arguments">Arguments</a></li><li><a href="#returns" title="Returns">Returns</a></li><li><a href="#errors" title="Errors">Errors</a></li><li><a href="#algorithm-overview" title="Algorithm Overview">Algorithm Overview</a></li><li><a href="#example" title="Example">Example</a></li><li><a href="#hyperparameter-guidance" title="Hyperparameter Guidance">Hyperparameter Guidance</a></li><li><a href="#note-on-threshold-parameter" title="Note on Threshold Parameter">Note on Threshold Parameter</a></li><li><a href="#performance-notes" title="Performance Notes">Performance Notes</a></li><li><a href="#data-quality-recommendations" title="Data Quality Recommendations">Data Quality Recommendations</a></li></ul></section><div id="rustdoc-modnav"><h2 class="in-crate"><a href="index.html">In crate notears</a></h2></div></div></nav><div class="sidebar-resizer" title="Drag to resize sidebar"></div><main><div class="width-limiter"><section id="main-content" class="content" tabindex="-1"><div class="main-heading"><div class="rustdoc-breadcrumbs"><a href="index.html">notears</a></div><h1>Function <span class="fn">learn_<wbr>dag</span>&nbsp;<button id="copy-path" title="Copy item path to clipboard">Copy item path</button></h1><rustdoc-toolbar></rustdoc-toolbar><span class="sub-heading"><a class="src" href="../src/notears/lib.rs.html#187-329">Source</a> </span></div><pre class="rust item-decl"><code>pub fn learn_dag(
+    data: &amp;<a class="type" href="types/type.WeightMatrix.html" title="type notears::types::WeightMatrix">WeightMatrix</a>,
+    lambda: <a class="primitive" href="https://doc.rust-lang.org/1.96.1/std/primitive.f64.html">f64</a>,
+    threshold: <a class="primitive" href="https://doc.rust-lang.org/1.96.1/std/primitive.f64.html">f64</a>,
+    config_opt: <a class="enum" href="https://doc.rust-lang.org/1.96.1/core/option/enum.Option.html" title="enum core::option::Option">Option</a>&lt;<a class="struct" href="types/struct.OptimizationConfig.html" title="struct notears::types::OptimizationConfig">OptimizationConfig</a>&gt;,
+) -&gt; <a class="enum" href="https://doc.rust-lang.org/1.96.1/core/result/enum.Result.html" title="enum core::result::Result">Result</a>&lt;<a class="struct" href="types/struct.OptimizationResult.html" title="struct notears::types::OptimizationResult">OptimizationResult</a>, <a class="struct" href="https://doc.rust-lang.org/1.96.1/alloc/boxed/struct.Box.html" title="struct alloc::boxed::Box">Box</a>&lt;dyn <a class="trait" href="https://doc.rust-lang.org/1.96.1/core/error/trait.Error.html" title="trait core::error::Error">Error</a>&gt;&gt;</code></pre><details class="toggle top-doc" open><summary class="hideme"><span>Expand description</span></summary><div class="docblock"><p>High-level API for learning directed acyclic graph structure from data</p>
+<p>This is the main entry point for users of the NOTEARS library. It orchestrates
+the complete pipeline: data validation, weight initialization, optimization,
+and post-processing to extract discrete DAG structure.</p>
+<h2 id="arguments"><a class="doc-anchor" href="#arguments">§</a>Arguments</h2>
+<ul>
+<li><code>data</code> - Observation matrix (n × d) where n = # samples, d = # variables</li>
+<li><code>lambda</code> - L₁ regularization coefficient, typically 0.0 or 0.1</li>
+<li><code>threshold</code> - Edge detection threshold for binarizing weights</li>
+<li><code>config_opt</code> - Optional custom optimization configuration (uses defaults if None)</li>
+</ul>
+<h2 id="returns"><a class="doc-anchor" href="#returns">§</a>Returns</h2>
+<p><code>OptimizationResult</code> containing:</p>
+<ul>
+<li><code>weight_matrix</code>: Continuous-valued d×d weight matrix W from optimization</li>
+<li><code>adjacency_matrix</code>: Binary d×d adjacency matrix (0/1 entries) after thresholding</li>
+<li><code>constraint_violation</code>: Final acyclicity constraint h(W) (should be &lt; 1e-8)</li>
+<li><code>iterations</code>: Number of optimization iterations performed</li>
+<li><code>final_score</code>: Final objective value F(W) = loss + regularization</li>
+</ul>
+<h2 id="errors"><a class="doc-anchor" href="#errors">§</a>Errors</h2>
+<p>Returns descriptive error messages for:</p>
+<ul>
+<li>Invalid data dimensions (n &lt; 1 or d &lt; 1)</li>
+<li>Data contains NaN or Inf values</li>
+<li>Data norm too large (||X||_F &gt; 1e10)</li>
+<li>Dimension too high (d &gt; 500)</li>
+<li>Invalid hyperparameters (lambda ∉ [0, 1] or threshold &lt; 0)</li>
+<li>Optimization failure or non-convergence</li>
+<li>Numerical issues during matrix exponential computation</li>
+</ul>
+<h2 id="algorithm-overview"><a class="doc-anchor" href="#algorithm-overview">§</a>Algorithm Overview</h2>
+<ol>
+<li><strong>Input Validation</strong>: Check data quality and hyperparameter ranges</li>
+<li><strong>Initialization</strong>: Random weight matrix W₀ ~ Uniform[-0.5, 0.5]</li>
+<li><strong>Optimization</strong>: Augmented Lagrangian with L-BFGS inner solver</li>
+<li><strong>Thresholding</strong>: Extract binary adjacency via hard thresholding</li>
+<li><strong>Validation</strong>: Verify DAG structure in result</li>
+<li><strong>Return</strong>: Packaged OptimizationResult with both continuous and discrete outputs</li>
+</ol>
+<h2 id="example"><a class="doc-anchor" href="#example">§</a>Example</h2>
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code><span class="kw">use </span>notears::learn_dag;
+<span class="kw">use </span>ndarray::Array2;
+
+<span class="comment">// Load or generate data (n samples, d variables)
+</span><span class="kw">let </span>data = Array2::zeros((<span class="number">100</span>, <span class="number">5</span>));
+
+<span class="comment">// Learn DAG structure
+</span><span class="kw">let </span>result = learn_dag(<span class="kw-2">&amp;</span>data, <span class="number">0.1</span>, <span class="number">0.3</span>, <span class="prelude-val">None</span>)<span class="question-mark">?</span>;
+
+<span class="comment">// Inspect results
+</span><span class="macro">println!</span>(<span class="string">"Discovered edges: {}"</span>, result.edges().len());
+<span class="macro">println!</span>(<span class="string">"Acyclicity constraint: {:.6e}"</span>, result.constraint_violation);
+</code></pre></div><h2 id="hyperparameter-guidance"><a class="doc-anchor" href="#hyperparameter-guidance">§</a>Hyperparameter Guidance</h2>
+<ul>
+<li><strong>lambda</strong> (L₁ regularization): Larger λ → sparser graph. Default: 0.1</li>
+<li><strong>threshold</strong> (edge detection): Larger θ → fewer edges. Default: 0.3</li>
+<li><strong>config_opt</strong>: Use defaults for most problems. Customize only if needed:
+<ul>
+<li><code>max_outer_iterations</code>: Increase if non-convergence (default: 100)</li>
+<li><code>constraint_tolerance</code>: Tighter tolerance for better acyclicity (default: 1e-8)</li>
+<li><code>penalty_rho_init</code>: Start value for penalty parameter (default: 1.0)</li>
+<li><code>edge_threshold</code>: Alternative to <code>threshold</code> parameter (see below)</li>
+</ul>
+</li>
+</ul>
+<h2 id="note-on-threshold-parameter"><a class="doc-anchor" href="#note-on-threshold-parameter">§</a>Note on Threshold Parameter</h2>
+<p>The <code>threshold</code> parameter in <code>learn_dag</code> overrides the <code>edge_threshold</code> field
+in the custom <code>OptimizationConfig</code> if both are provided.</p>
+<h2 id="performance-notes"><a class="doc-anchor" href="#performance-notes">§</a>Performance Notes</h2>
+<ul>
+<li>Complexity: O(d³ log d) per iteration due to matrix exponential</li>
+<li>Typical runtime: d &lt; 20 nodes: milliseconds, d = 50 nodes: seconds</li>
+<li>Memory: O(d²) for weight matrices, O(n·d) for data</li>
+<li>Scaling: Recommended for d ≤ 500 (matrix exponential stability)</li>
+</ul>
+<h2 id="data-quality-recommendations"><a class="doc-anchor" href="#data-quality-recommendations">§</a>Data Quality Recommendations</h2>
+<p>Before calling <code>learn_dag</code>, preprocess data to:</p>
+<ul>
+<li><strong>Center</strong>: Subtract mean to zero per column</li>
+<li><strong>Scale</strong>: Divide by standard deviation per column</li>
+<li><strong>Check</strong>: Verify no NaN/Inf values present</li>
+</ul>
+<p>This is NOT done automatically; use <code>standardize_data</code> if needed:</p>
+
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code><span class="kw">use </span>notears::{learn_dag, standardize_data, WeightMatrix};
+<span class="kw">use </span>ndarray::Array2;
+
+<span class="comment">// Example: load your data as WeightMatrix (n × d)
+</span><span class="kw">let </span>data: WeightMatrix = Array2::zeros((<span class="number">100</span>, <span class="number">5</span>)); <span class="comment">// n=100 samples, d=5 variables
+</span><span class="kw">let </span>standardized = standardize_data(<span class="kw-2">&amp;</span>data)<span class="question-mark">?</span>;
+<span class="kw">let </span>result = learn_dag(<span class="kw-2">&amp;</span>standardized, <span class="number">0.1</span>, <span class="number">0.3</span>, <span class="prelude-val">None</span>)<span class="question-mark">?</span>;
+<span class="macro">println!</span>(<span class="string">"Discovered edges: {}"</span>, result.edges().len());</code></pre></div></div></details></section></div></main></body></html>

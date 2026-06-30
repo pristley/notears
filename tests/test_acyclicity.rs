@@ -8,10 +8,10 @@
 
 mod common;
 
-use notears::acyclicity::{acyclicity_constraint, acyclicity_gradient};
-use notears::utils::{matrix_exponential, is_acyclic, validate_dag};
-use ndarray::Array2;
 use approx::assert_abs_diff_eq;
+use ndarray::Array2;
+use notears::acyclicity::{acyclicity_constraint, acyclicity_gradient};
+use notears::utils::{is_acyclic, matrix_exponential, validate_dag};
 
 #[test]
 fn test_matrix_exponential_identity() {
@@ -129,11 +129,7 @@ fn test_acyclicity_constraint_simple_cycle() {
     w[[1, 0]] = 1.0;
 
     let h = acyclicity_constraint(&w).unwrap();
-    assert!(
-        h > 0.01,
-        "Simple cycle should have large h, got h={}",
-        h
-    );
+    assert!(h > 0.01, "Simple cycle should have large h, got h={}", h);
 }
 
 #[test]
@@ -145,11 +141,7 @@ fn test_acyclicity_constraint_triangle_cycle() {
     w[[2, 0]] = 1.0;
 
     let h = acyclicity_constraint(&w).unwrap();
-    assert!(
-        h > 0.1,
-        "Triangle cycle should have large h, got h={}",
-        h
-    );
+    assert!(h > 0.1, "Triangle cycle should have large h, got h={}", h);
 }
 
 #[test]
@@ -166,7 +158,10 @@ fn test_acyclicity_constraint_monotonicity() {
     let h_small = acyclicity_constraint(&w_small).unwrap();
     let h_large = acyclicity_constraint(&w_large).unwrap();
 
-    assert!(h_large > h_small, "Larger cycle weight should have larger h");
+    assert!(
+        h_large > h_small,
+        "Larger cycle weight should have larger h"
+    );
 }
 
 #[test]
@@ -233,7 +228,12 @@ fn test_acyclicity_gradient_descent_direction() {
 
     let h_new = acyclicity_constraint(&w_new).unwrap();
 
-    assert!(h_new < h_before, "Step in negative gradient should decrease h(W): {} -> {}", h_before, h_new);
+    assert!(
+        h_new < h_before,
+        "Step in negative gradient should decrease h(W): {} -> {}",
+        h_before,
+        h_new
+    );
 }
 
 #[test]
@@ -243,7 +243,11 @@ fn test_acyclicity_gradient_zero_at_dags() {
     let grad = acyclicity_gradient(&w).unwrap();
 
     let grad_norm = common::frobenius_norm(&grad);
-    assert!(grad_norm < 1e-2, "Gradient norm at DAG should be small, got {}", grad_norm);
+    assert!(
+        grad_norm < 1e-2,
+        "Gradient norm at DAG should be small, got {}",
+        grad_norm
+    );
 }
 
 #[test]

@@ -9,9 +9,9 @@
 mod common;
 
 use notears::acyclicity::acyclicity_constraint;
-use notears::scoring::{mse_loss, l1_penalty};
-use notears::utils::matrix_exponential;
+use notears::scoring::{l1_penalty, mse_loss};
 use notears::types::RegularizationConfig;
+use notears::utils::matrix_exponential;
 use std::time::Instant;
 
 /// Simple timing utility
@@ -28,9 +28,7 @@ fn bench_matrix_exponential_small() {
     let d = 5;
     let w = common::random_dag(d, 0.5);
 
-    let (_, time_us) = time_operation(|| {
-        matrix_exponential(&w).unwrap()
-    });
+    let (_, time_us) = time_operation(|| matrix_exponential(&w).unwrap());
 
     println!("Matrix exp ({} x {}): {} μs", d, d, time_us);
     assert!(time_us < 10000); // Should be < 10ms for small matrix
@@ -42,9 +40,7 @@ fn bench_matrix_exponential_medium() {
     let d = 20;
     let w = common::random_dag(d, 0.3);
 
-    let (_, time_us) = time_operation(|| {
-        matrix_exponential(&w).unwrap()
-    });
+    let (_, time_us) = time_operation(|| matrix_exponential(&w).unwrap());
 
     println!("Matrix exp ({} x {}): {} μs", d, d, time_us);
     assert!(time_us < 100000); // Should be < 100ms for medium matrix
@@ -57,9 +53,7 @@ fn bench_matrix_exponential_large() {
     let d = 50;
     let w = common::random_dag(d, 0.2);
 
-    let (_, time_us) = time_operation(|| {
-        matrix_exponential(&w).unwrap()
-    });
+    let (_, time_us) = time_operation(|| matrix_exponential(&w).unwrap());
 
     println!("Matrix exp ({} x {}): {} μs", d, d, time_us);
 }
@@ -70,9 +64,7 @@ fn bench_acyclicity_constraint_small() {
     let d = 5;
     let w = common::random_dag(d, 0.5);
 
-    let (_, time_us) = time_operation(|| {
-        acyclicity_constraint(&w).unwrap()
-    });
+    let (_, time_us) = time_operation(|| acyclicity_constraint(&w).unwrap());
 
     println!("Acyclicity constraint ({} x {}): {} μs", d, d, time_us);
     assert!(time_us < 20000);
@@ -84,9 +76,7 @@ fn bench_acyclicity_constraint_medium() {
     let d = 20;
     let w = common::random_dag(d, 0.3);
 
-    let (_, time_us) = time_operation(|| {
-        acyclicity_constraint(&w).unwrap()
-    });
+    let (_, time_us) = time_operation(|| acyclicity_constraint(&w).unwrap());
 
     println!("Acyclicity constraint ({} x {}): {} μs", d, d, time_us);
     assert!(time_us < 200000);
@@ -100,9 +90,7 @@ fn bench_mse_loss_small() {
     let data = common::random_data(n, d);
     let w = common::random_dag(d, 0.5);
 
-    let (_, time_us) = time_operation(|| {
-        mse_loss(&data, &w).unwrap()
-    });
+    let (_, time_us) = time_operation(|| mse_loss(&data, &w).unwrap());
 
     println!("MSE loss ({} x {}): {} μs", n, d, time_us);
     assert!(time_us < 5000);
@@ -116,9 +104,7 @@ fn bench_mse_loss_large() {
     let data = common::random_data(n, d);
     let w = common::random_dag(d, 0.3);
 
-    let (_, time_us) = time_operation(|| {
-        mse_loss(&data, &w).unwrap()
-    });
+    let (_, time_us) = time_operation(|| mse_loss(&data, &w).unwrap());
 
     println!("MSE loss ({} x {}): {} μs", n, d, time_us);
     assert!(time_us < 50000);
@@ -130,9 +116,7 @@ fn bench_l1_penalty_small() {
     let d = 5;
     let w = common::random_dag(d, 0.5);
 
-    let (_, time_us) = time_operation(|| {
-        l1_penalty(&w)
-    });
+    let (_, time_us) = time_operation(|| l1_penalty(&w));
 
     println!("L1 penalty ({} x {}): {} μs", d, d, time_us);
     assert!(time_us < 100);
@@ -144,9 +128,7 @@ fn bench_l1_penalty_large() {
     let d = 100;
     let w = common::random_dag(d, 0.2);
 
-    let (_, time_us) = time_operation(|| {
-        l1_penalty(&w)
-    });
+    let (_, time_us) = time_operation(|| l1_penalty(&w));
 
     println!("L1 penalty ({} x {}): {} μs", d, d, time_us);
     assert!(time_us < 10000);
@@ -159,9 +141,7 @@ fn bench_data_generation_small() {
     let d = 5;
     let w = common::random_dag(d, 0.5);
 
-    let (_, time_us) = time_operation(|| {
-        common::data_from_sem(n, d, &w, 0.1)
-    });
+    let (_, time_us) = time_operation(|| common::data_from_sem(n, d, &w, 0.1));
 
     println!("Data generation ({} x {}): {} μs", n, d, time_us);
     assert!(time_us < 10000);
@@ -174,9 +154,7 @@ fn bench_data_generation_large() {
     let d = 20;
     let w = common::random_dag(d, 0.3);
 
-    let (_, time_us) = time_operation(|| {
-        common::data_from_sem(n, d, &w, 0.1)
-    });
+    let (_, time_us) = time_operation(|| common::data_from_sem(n, d, &w, 0.1));
 
     println!("Data generation ({} x {}): {} μs", n, d, time_us);
 }
@@ -186,9 +164,7 @@ fn bench_random_dag_generation() {
     // Time random DAG generation
     let d = 50;
 
-    let (_, time_us) = time_operation(|| {
-        common::random_dag(d, 0.3)
-    });
+    let (_, time_us) = time_operation(|| common::random_dag(d, 0.3));
 
     println!("Random DAG generation ({} x {}): {} μs", d, d, time_us);
     assert!(time_us < 5000);
@@ -201,9 +177,7 @@ fn bench_standardization() {
     let d = 20;
     let data = common::random_data(n, d);
 
-    let (_, time_us) = time_operation(|| {
-        common::standardize(&data)
-    });
+    let (_, time_us) = time_operation(|| common::standardize(&data));
 
     println!("Standardization ({} x {}): {} μs", n, d, time_us);
     assert!(time_us < 50000);
@@ -215,9 +189,7 @@ fn bench_frobenius_norm() {
     let d = 100;
     let w = common::random_dag(d, 0.2);
 
-    let (_, time_us) = time_operation(|| {
-        common::frobenius_norm(&w)
-    });
+    let (_, time_us) = time_operation(|| common::frobenius_norm(&w));
 
     println!("Frobenius norm ({} x {}): {} μs", d, d, time_us);
     assert!(time_us < 1000);
@@ -230,9 +202,7 @@ fn bench_shd_computation() {
     let g1 = ndarray::Array2::<i32>::zeros((d, d));
     let g2 = ndarray::Array2::<i32>::zeros((d, d));
 
-    let (_, time_us) = time_operation(|| {
-        common::structural_hamming_distance(&g1, &g2)
-    });
+    let (_, time_us) = time_operation(|| common::structural_hamming_distance(&g1, &g2));
 
     println!("SHD computation ({} x {}): {} μs", d, d, time_us);
     assert!(time_us < 10000);
@@ -247,9 +217,7 @@ fn bench_total_loss() {
     let w = common::random_dag(d, 0.5);
     let config = RegularizationConfig::new(0.1, false).unwrap();
 
-    let (_, time_us) = time_operation(|| {
-        notears::scoring::total_loss(&data, &w, &config).unwrap()
-    });
+    let (_, time_us) = time_operation(|| notears::scoring::total_loss(&data, &w, &config).unwrap());
 
     println!("Total loss ({} x {}): {} μs", n, d, time_us);
     assert!(time_us < 20000);
@@ -261,9 +229,7 @@ fn bench_edge_statistics() {
     let d = 50;
     let w = common::random_dag(d, 0.3);
 
-    let (_, time_us) = time_operation(|| {
-        common::edge_statistics(&w, 0.3)
-    });
+    let (_, time_us) = time_operation(|| common::edge_statistics(&w, 0.3));
 
     println!("Edge statistics ({} x {}): {} μs", d, d, time_us);
     assert!(time_us < 5000);
@@ -278,9 +244,7 @@ fn bench_is_symmetric() {
     let wt = w.t().to_owned();
     w = &w + &wt;
 
-    let (_, time_us) = time_operation(|| {
-        common::is_symmetric(&w, 1e-10)
-    });
+    let (_, time_us) = time_operation(|| common::is_symmetric(&w, 1e-10));
 
     println!("Symmetry check ({} x {}): {} μs", d, d, time_us);
     assert!(time_us < 5000);
@@ -292,9 +256,7 @@ fn bench_lower_triangular_check() {
     let d = 100;
     let w = common::random_dag(d, 0.2);
 
-    let (_, time_us) = time_operation(|| {
-        common::is_lower_triangular(&w, 1e-10)
-    });
+    let (_, time_us) = time_operation(|| common::is_lower_triangular(&w, 1e-10));
 
     println!("Lower triangular check ({} x {}): {} μs", d, d, time_us);
     assert!(time_us < 5000);
@@ -326,9 +288,7 @@ fn bench_dimension_scaling_constraint() {
     // Analyze constraint computation scaling with dimension
     for d in [5, 10, 20, 30].iter() {
         let w = common::random_dag(*d, 0.4);
-        let (_, time_us) = time_operation(|| {
-            acyclicity_constraint(&w).unwrap()
-        });
+        let (_, time_us) = time_operation(|| acyclicity_constraint(&w).unwrap());
         println!("Constraint d={}: {} μs", d, time_us);
     }
 }
@@ -340,9 +300,7 @@ fn bench_dimension_scaling_mse() {
     for d in [5, 10, 20, 30].iter() {
         let data = common::random_data(n, *d);
         let w = common::random_dag(*d, 0.3);
-        let (_, time_us) = time_operation(|| {
-            mse_loss(&data, &w).unwrap()
-        });
+        let (_, time_us) = time_operation(|| mse_loss(&data, &w).unwrap());
         println!("MSE n={}, d={}: {} μs", n, d, time_us);
     }
 }
@@ -354,9 +312,7 @@ fn bench_sample_scaling_mse() {
     for n in [50, 100, 500, 1000].iter() {
         let data = common::random_data(*n, d);
         let w = common::random_dag(d, 0.3);
-        let (_, time_us) = time_operation(|| {
-            mse_loss(&data, &w).unwrap()
-        });
+        let (_, time_us) = time_operation(|| mse_loss(&data, &w).unwrap());
         println!("MSE n={}, d={}: {} μs", n, d, time_us);
     }
 }

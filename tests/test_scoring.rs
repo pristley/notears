@@ -8,10 +8,10 @@
 
 mod common;
 
-use notears::scoring::{mse_loss, l1_penalty, total_loss};
-use notears::types::RegularizationConfig;
-use ndarray::Array2;
 use approx::assert_abs_diff_eq;
+use ndarray::Array2;
+use notears::scoring::{l1_penalty, mse_loss, total_loss};
+use notears::types::RegularizationConfig;
 
 #[test]
 fn test_mse_loss_zero_matrix() {
@@ -257,7 +257,10 @@ fn test_mse_loss_reconstruction_improvement() {
     let loss_true = mse_loss(&data, &w_true).unwrap();
 
     // Using true W should give better (lower) loss
-    assert!(loss_true <= loss_zero, "True structure should improve reconstruction");
+    assert!(
+        loss_true <= loss_zero,
+        "True structure should improve reconstruction"
+    );
 }
 
 #[test]
@@ -283,7 +286,10 @@ fn test_mse_loss_low_noise_limit() {
 
     let loss = mse_loss(&data, &w_true).unwrap();
     // Should be very small (machine precision level)
-    assert!(loss < 1e-10, "Perfect reconstruction should have negligible loss");
+    assert!(
+        loss < 1e-10,
+        "Perfect reconstruction should have negligible loss"
+    );
 }
 
 #[test]

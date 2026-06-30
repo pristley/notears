@@ -4,7 +4,6 @@
 /// used throughout the NOTEARS library for DAG structure learning.
 /// All configuration structures include strict validation to ensure
 /// numerical stability and correctness of the optimization.
-
 use ndarray::Array2;
 use serde::{Deserialize, Serialize};
 
@@ -103,7 +102,9 @@ impl OptimizationConfig {
 
         // Validate constraint tolerance: must be in [1e-10, 1e-4]
         if constraint_tolerance < 1e-10 || constraint_tolerance > 1e-4 {
-            return Err(ConfigError::InvalidConstraintTolerance(constraint_tolerance));
+            return Err(ConfigError::InvalidConstraintTolerance(
+                constraint_tolerance,
+            ));
         }
 
         // Validate penalty rho
@@ -304,11 +305,20 @@ impl ValidationResult {
         if self.is_valid_dag() {
             "✓ PASS: Valid DAG structure".to_string()
         } else if !self.is_acyclic_by_constraint && !self.is_acyclic_by_topological_sort {
-            format!("✗ FAIL: Cycles detected; h(W) = {:.2e}", self.constraint_value)
+            format!(
+                "✗ FAIL: Cycles detected; h(W) = {:.2e}",
+                self.constraint_value
+            )
         } else if !self.is_acyclic_by_constraint {
-            format!("⚠ WARN: h(W) > tolerance ({:.2e}); but no cycles detected", self.constraint_value)
+            format!(
+                "⚠ WARN: h(W) > tolerance ({:.2e}); but no cycles detected",
+                self.constraint_value
+            )
         } else {
-            format!("⚠ WARN: Topological sort detected cycles; h(W) = {:.2e}", self.constraint_value)
+            format!(
+                "⚠ WARN: Topological sort detected cycles; h(W) = {:.2e}",
+                self.constraint_value
+            )
         }
     }
 }

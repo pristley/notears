@@ -70,12 +70,7 @@ pub fn random_data(n: usize, d: usize) -> Array2<f64> {
 ///
 /// # Returns
 /// Simulated data (n×d) from the SEM with structure W
-pub fn data_from_sem(
-    n: usize,
-    d: usize,
-    w: &Array2<f64>,
-    noise_scale: f64,
-) -> Array2<f64> {
+pub fn data_from_sem(n: usize, d: usize, w: &Array2<f64>, noise_scale: f64) -> Array2<f64> {
     let mut rng = rand::thread_rng();
     let mut data = Array2::<f64>::zeros((n, d));
 
@@ -298,10 +293,7 @@ pub fn count_nonzero(matrix: &Array2<f64>) -> usize {
 ///
 /// # Returns
 /// (num_edges, sparsity, average_edge_weight, max_weight)
-pub fn edge_statistics(
-    w: &Array2<f64>,
-    threshold: f64,
-) -> (usize, f64, f64, f64) {
+pub fn edge_statistics(w: &Array2<f64>, threshold: f64) -> (usize, f64, f64, f64) {
     let d = w.shape()[0];
     let mut num_edges = 0;
     let mut sum_weights: f64 = 0.0;

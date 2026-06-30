@@ -1,3 +1,5 @@
+use crate::acyclicity::{self, AcyclicityError};
+use crate::scoring::{self, ScoringError};
 /// Constrained optimization solver: L-BFGS with Augmented Lagrangian
 ///
 /// Solves: minimize F(W) subject to h(W) = 0
@@ -8,10 +10,10 @@
 ///   L_ρ(W, λ) = F(W) + λ^T*h(W) + (ρ/2)*h(W)^2
 ///
 /// Inner loop uses L-BFGS quasi-Newton optimization.
-
-use crate::types::{WeightMatrix, DataMatrix, OptimizationResult, OptimizationConfig, RegularizationConfig, ConfigError};
-use crate::acyclicity::{self, AcyclicityError};
-use crate::scoring::{self, ScoringError};
+use crate::types::{
+    ConfigError, DataMatrix, OptimizationConfig, OptimizationResult, RegularizationConfig,
+    WeightMatrix,
+};
 use crate::utils::UtilError;
 use ndarray::{Array1, Array2};
 use std::f64;
@@ -95,8 +97,14 @@ impl NotearsSolver {
             if h <= self.opt_config.constraint_tolerance {
                 // Converged
                 let loss = scoring::total_loss(data, &w, &self.reg_config)?;
-                let adj_matrix = w.mapv(|x| if x.abs() > self.opt_config.edge_threshold { 1 } else { 0 });
-                
+                let adj_matrix = w.mapv(|x| {
+                    if x.abs() > self.opt_config.edge_threshold {
+                        1
+                    } else {
+                        0
+                    }
+                });
+
                 return Ok(OptimizationResult {
                     weight_matrix: w,
                     constraint_violation: h,
@@ -143,7 +151,13 @@ impl NotearsSolver {
 
         let (final_h, _) = acyclicity::acyclicity_with_gradient(&w)?;
         let loss = scoring::total_loss(data, &w, &self.reg_config)?;
-        let adj_matrix = w.mapv(|x| if x.abs() > self.opt_config.edge_threshold { 1 } else { 0 });
+        let adj_matrix = w.mapv(|x| {
+            if x.abs() > self.opt_config.edge_threshold {
+                1
+            } else {
+                0
+            }
+        });
 
         Ok(OptimizationResult {
             weight_matrix: w,
@@ -261,15 +275,17 @@ pub fn augmented_lagrangian(
 ) -> Result<f64, OptimizationError> {
     // Input validation
     if rho <= 0.0 {
-        return Err(OptimizationError::InvalidState(
-            format!("Penalty parameter rho must be positive, got rho={}", rho)
-        ));
+        return Err(OptimizationError::InvalidState(format!(
+            "Penalty parameter rho must be positive, got rho={}",
+            rho
+        )));
     }
 
     if !alpha.is_finite() {
-        return Err(OptimizationError::InvalidState(
-            format!("Lagrange multiplier alpha must be finite, got alpha={}", alpha)
-        ));
+        return Err(OptimizationError::InvalidState(format!(
+            "Lagrange multiplier alpha must be finite, got alpha={}",
+            alpha
+        )));
     }
 
     // **Term 1: Score function F(W)**
@@ -277,9 +293,10 @@ pub fn augmented_lagrangian(
 
     // Check F(W) for numerical issues
     if !f_w.is_finite() {
-        return Err(OptimizationError::InvalidState(
-            format!("Score function F(W) is not finite: {}", f_w)
-        ));
+        return Err(OptimizationError::InvalidState(format!(
+            "Score function F(W) is not finite: {}",
+            f_w
+        )));
     }
 
     // **Term 2 & 3: Acyclicity constraint terms (ρ/2) * h² + α * h**
@@ -287,9 +304,10 @@ pub fn augmented_lagrangian(
 
     // Check h(W) for numerical issues
     if !h_w.is_finite() {
-        return Err(OptimizationError::InvalidState(
-            format!("Acyclicity constraint h(W) is not finite: {}", h_w)
-        ));
+        return Err(OptimizationError::InvalidState(format!(
+            "Acyclicity constraint h(W) is not finite: {}",
+            h_w
+        )));
     }
 
     // **Term 2: Quadratic penalty (ρ/2) * h(W)²**
@@ -303,10 +321,10 @@ pub fn augmented_lagrangian(
 
     // Final numerical check
     if !augmented_obj.is_finite() {
-        return Err(OptimizationError::InvalidState(
-            format!("Augmented Lagrangian is not finite: F={}, penalty={}, multiplier={}, total={}",
-                    f_w, penalty_term, multiplier_term, augmented_obj)
-        ));
+        return Err(OptimizationError::InvalidState(format!(
+            "Augmented Lagrangian is not finite: F={}, penalty={}, multiplier={}, total={}",
+            f_w, penalty_term, multiplier_term, augmented_obj
+        )));
     }
 
     Ok(augmented_obj)
@@ -384,15 +402,17 @@ pub fn augmented_lagrangian_gradient(
 ) -> Result<WeightMatrix, OptimizationError> {
     // Input validation
     if rho <= 0.0 {
-        return Err(OptimizationError::InvalidState(
-            format!("Penalty parameter rho must be positive, got rho={}", rho)
-        ));
+        return Err(OptimizationError::InvalidState(format!(
+            "Penalty parameter rho must be positive, got rho={}",
+            rho
+        )));
     }
 
     if !alpha.is_finite() {
-        return Err(OptimizationError::InvalidState(
-            format!("Lagrange multiplier alpha must be finite, got alpha={}", alpha)
-        ));
+        return Err(OptimizationError::InvalidState(format!(
+            "Lagrange multiplier alpha must be finite, got alpha={}",
+            alpha
+        )));
     }
 
     // **Component 1: ∇F(W) - Score function gradient**
@@ -401,7 +421,7 @@ pub fn augmented_lagrangian_gradient(
     // Check for numerical issues
     if grad_f.iter().any(|x| !x.is_finite()) {
         return Err(OptimizationError::InvalidState(
-            "Score gradient contains NaN or Inf".to_string()
+            "Score gradient contains NaN or Inf".to_string(),
         ));
     }
 
@@ -415,7 +435,7 @@ pub fn augmented_lagrangian_gradient(
     // Check for numerical issues
     if grad_h.iter().any(|x| !x.is_finite()) {
         return Err(OptimizationError::InvalidState(
-            "Acyclicity gradient contains NaN or Inf".to_string()
+            "Acyclicity gradient contains NaN or Inf".to_string(),
         ));
     }
 
@@ -428,8 +448,12 @@ pub fn augmented_lagrangian_gradient(
     let constraint_weighted = penalty_multiplier * &grad_h;
 
     // Pre-compute norms for error reporting before moving values
-    let grad_f_norm = grad_f.iter().map(|x| x*x).sum::<f64>().sqrt();
-    let constraint_norm = constraint_weighted.iter().map(|x| x*x).sum::<f64>().sqrt();
+    let grad_f_norm = grad_f.iter().map(|x| x * x).sum::<f64>().sqrt();
+    let constraint_norm = constraint_weighted
+        .iter()
+        .map(|x| x * x)
+        .sum::<f64>()
+        .sqrt();
 
     // **Final gradient: ∇_W L_ρ = ∇F + (ρ*h + α)*∇h**
     let gradient = grad_f + constraint_weighted;
@@ -455,15 +479,16 @@ pub fn augmented_lagrangian_gradient(
 /// Weight matrix W ∈ ℝ^{d×d}
 fn vec_to_matrix(vec: &Array1<f64>, d: usize) -> Result<WeightMatrix, OptimizationError> {
     if vec.len() != d * d {
-        return Err(OptimizationError::InvalidState(
-            format!("Vector length {} does not match matrix size d²={}", vec.len(), d*d)
-        ));
+        return Err(OptimizationError::InvalidState(format!(
+            "Vector length {} does not match matrix size d²={}",
+            vec.len(),
+            d * d
+        )));
     }
 
-    let mat = Array2::from_shape_vec((d, d), vec.to_vec())
-        .map_err(|_| OptimizationError::InvalidState(
-            "Failed to reshape vector into matrix".to_string()
-        ))?;
+    let mat = Array2::from_shape_vec((d, d), vec.to_vec()).map_err(|_| {
+        OptimizationError::InvalidState("Failed to reshape vector into matrix".to_string())
+    })?;
 
     Ok(mat)
 }
@@ -518,10 +543,10 @@ fn objective_vec(
 /// Maintains a limited-rank approximation to the Hessian inverse.
 /// Effective for non-convex smooth optimization.
 struct SimpleLBFGS {
-    memory: usize,           // Number of history pairs to keep
-    max_iters: usize,        // Maximum iterations
-    tolerance_grad: f64,     // Gradient norm tolerance
-    line_search_iters: usize,// Max line search attempts
+    memory: usize,            // Number of history pairs to keep
+    max_iters: usize,         // Maximum iterations
+    tolerance_grad: f64,      // Gradient norm tolerance
+    line_search_iters: usize, // Max line search attempts
 }
 
 impl SimpleLBFGS {
@@ -557,14 +582,14 @@ impl SimpleLBFGS {
         G: Fn(&Array1<f64>) -> Array1<f64>,
     {
         let _n = x.len();
-        
+
         // Storage for s and y vectors (BFGS updates)
         let mut s_list: Vec<Array1<f64>> = Vec::with_capacity(self.memory);
         let mut y_list: Vec<Array1<f64>> = Vec::with_capacity(self.memory);
         let mut rho_list: Vec<f64> = Vec::with_capacity(self.memory);
 
         let mut grad = g(&x);
-        let mut grad_norm = grad.iter().map(|x| x*x).sum::<f64>().sqrt();
+        let mut grad_norm = grad.iter().map(|x| x * x).sum::<f64>().sqrt();
         let mut f_val = f(&x);
 
         for iter in 0..max_iters {
@@ -575,7 +600,7 @@ impl SimpleLBFGS {
 
             // Compute search direction using L-BFGS approximation
             let mut direction = grad.clone();
-            
+
             // Apply two-loop recursion for H*g
             let m = s_list.len();
             let mut alpha_vec = vec![0.0; m];
@@ -589,7 +614,7 @@ impl SimpleLBFGS {
             // Use identity as initial Hessian approximation
             // (More sophisticated scaling could be used)
             if m > 0 {
-                let gamma = rho_list[m-1] * s_list[m-1].dot(&y_list[m-1]);
+                let gamma = rho_list[m - 1] * s_list[m - 1].dot(&y_list[m - 1]);
                 if gamma > 0.0 {
                     direction = direction * gamma.recip();
                 }
@@ -610,8 +635,9 @@ impl SimpleLBFGS {
             let mut f_new = f(&x_new);
             let mut line_search_iters = 0;
 
-            while f_new >= f_val - 1e-4 * step_size * grad.dot(&direction) 
-                  && line_search_iters < self.line_search_iters {
+            while f_new >= f_val - 1e-4 * step_size * grad.dot(&direction)
+                && line_search_iters < self.line_search_iters
+            {
                 step_size *= 0.5;
                 x_new = x.clone() + &(step_size * &direction);
                 f_new = f(&x_new);
@@ -650,7 +676,7 @@ impl SimpleLBFGS {
             x = x_new;
             grad = grad_new;
             f_val = f_new;
-            grad_norm = grad.iter().map(|x| x*x).sum::<f64>().sqrt();
+            grad_norm = grad.iter().map(|x| x * x).sum::<f64>().sqrt();
         }
 
         (x, max_iters)
@@ -732,20 +758,22 @@ pub fn solve_primal_subproblem(
     // Validate inputs
     if d == 0 {
         return Err(OptimizationError::InvalidState(
-            "Weight matrix dimension must be > 0".to_string()
+            "Weight matrix dimension must be > 0".to_string(),
         ));
     }
 
     if rho <= 0.0 {
-        return Err(OptimizationError::InvalidState(
-            format!("Penalty parameter rho must be positive, got {}", rho)
-        ));
+        return Err(OptimizationError::InvalidState(format!(
+            "Penalty parameter rho must be positive, got {}",
+            rho
+        )));
     }
 
     if !alpha.is_finite() {
-        return Err(OptimizationError::InvalidState(
-            format!("Lagrange multiplier alpha must be finite, got {}", alpha)
-        ));
+        return Err(OptimizationError::InvalidState(format!(
+            "Lagrange multiplier alpha must be finite, got {}",
+            alpha
+        )));
     }
 
     // Convert initial matrix to vector for L-BFGS
@@ -781,7 +809,7 @@ pub fn solve_primal_subproblem(
     // Verify result is finite
     if w_opt.iter().any(|x| !x.is_finite()) {
         return Err(OptimizationError::InvalidState(
-            "L-BFGS produced NaN or Inf weights".to_string()
+            "L-BFGS produced NaN or Inf weights".to_string(),
         ));
     }
 
@@ -913,17 +941,15 @@ pub fn solve_ecp(
 
     // Validate dimensions
     if d != n_vars {
-        return Err(OptimizationError::InvalidState(
-            format!(
-                "Weight matrix dimension {} does not match data dimension {}",
-                d, n_vars
-            )
-        ));
+        return Err(OptimizationError::InvalidState(format!(
+            "Weight matrix dimension {} does not match data dimension {}",
+            d, n_vars
+        )));
     }
 
     if d == 0 || n_samples == 0 {
         return Err(OptimizationError::InvalidState(
-            "Data matrix must have positive dimensions".to_string()
+            "Data matrix must have positive dimensions".to_string(),
         ));
     }
 
@@ -1007,7 +1033,13 @@ pub fn solve_ecp(
             );
 
             let final_loss = scoring::score_function(&w, data, config)?;
-            let adjacency = w.mapv(|x| if x.abs() > optimizer_config.edge_threshold { 1 } else { 0 });
+            let adjacency = w.mapv(|x| {
+                if x.abs() > optimizer_config.edge_threshold {
+                    1
+                } else {
+                    0
+                }
+            });
 
             return Ok(OptimizationResult {
                 weight_matrix: w,
@@ -1023,7 +1055,7 @@ pub fn solve_ecp(
         // Detect NaN/Inf
         if w.iter().any(|x| !x.is_finite()) {
             return Err(OptimizationError::InvalidState(
-                "Weight matrix contains NaN or Inf".to_string()
+                "Weight matrix contains NaN or Inf".to_string(),
             ));
         }
     }
@@ -1054,12 +1086,12 @@ mod tests {
         let data = ndarray::array![[1.0, 2.0], [3.0, 4.0]];
         let w = Array2::zeros((2, 2));
         let config = RegularizationConfig::new(0.1, false).unwrap();
-        
+
         let alpha = 1.0;
         let rho = 10.0;
-        
+
         let l_rho = augmented_lagrangian(&w, alpha, rho, &data, &config).unwrap();
-        
+
         // h(0) = 0, so L_ρ = F(0) + 0 + 0 = F(0)
         let f_0 = scoring::score_function(&w, &data, &config).unwrap();
         assert_abs_diff_eq!(l_rho, f_0, epsilon = 1e-12);
@@ -1072,19 +1104,19 @@ mod tests {
         let data = ndarray::array![[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]];
         let w = ndarray::array![[0.1, 0.05], [-0.05, 0.2]];
         let config = RegularizationConfig::new(0.15, false).unwrap();
-        
+
         let alpha = 2.0;
         let rho = 5.0;
-        
+
         let l_rho = augmented_lagrangian(&w, alpha, rho, &data, &config).unwrap();
-        
+
         // Compute components separately
         let f_w = scoring::score_function(&w, &data, &config).unwrap();
         let h_w = acyclicity::acyclicity_constraint(&w).unwrap();
         let penalty = (rho / 2.0) * h_w * h_w;
         let multiplier = alpha * h_w;
         let expected = f_w + penalty + multiplier;
-        
+
         assert_abs_diff_eq!(l_rho, expected, epsilon = 1e-12);
     }
 
@@ -1094,19 +1126,19 @@ mod tests {
         let data = ndarray::array![[1.0, 2.0], [3.0, 4.0]];
         let w = ndarray::array![[0.1, 0.02], [-0.02, 0.1]];
         let config = RegularizationConfig::new(0.1, false).unwrap();
-        
+
         let rho = 1.0;
         let alpha1 = 1.0;
         let alpha2 = 3.0;
-        
+
         let l1 = augmented_lagrangian(&w, alpha1, rho, &data, &config).unwrap();
         let l2 = augmented_lagrangian(&w, alpha2, rho, &data, &config).unwrap();
-        
+
         // h(W) is fixed, so change in L should be (alpha2 - alpha1) * h(W)
         let h_w = acyclicity::acyclicity_constraint(&w).unwrap();
         let delta_expected = (alpha2 - alpha1) * h_w;
         let delta_actual = l2 - l1;
-        
+
         assert_abs_diff_eq!(delta_actual, delta_expected, epsilon = 1e-12);
     }
 
@@ -1116,19 +1148,19 @@ mod tests {
         let data = ndarray::array![[1.0, 2.0], [3.0, 4.0]];
         let w = ndarray::array![[0.1, 0.02], [-0.02, 0.15]];
         let config = RegularizationConfig::new(0.1, false).unwrap();
-        
+
         let alpha = 1.0;
         let rho1 = 1.0;
         let rho2 = 5.0;
-        
+
         let l1 = augmented_lagrangian(&w, alpha, rho1, &data, &config).unwrap();
         let l2 = augmented_lagrangian(&w, alpha, rho2, &data, &config).unwrap();
-        
+
         // h(W) is fixed, so change in penalty is (rho2 - rho1) * h² / 2
         let h_w = acyclicity::acyclicity_constraint(&w).unwrap();
         let delta_penalty = ((rho2 - rho1) / 2.0) * h_w * h_w;
         let delta_actual = l2 - l1;
-        
+
         assert_abs_diff_eq!(delta_actual, delta_penalty, epsilon = 1e-12);
     }
 
@@ -1138,10 +1170,10 @@ mod tests {
         let data = ndarray::array![[1.0, 2.0], [3.0, 4.0]];
         let w = ndarray::array![[0.1, 0.05], [-0.05, 0.2]];
         let config = RegularizationConfig::new(0.1, false).unwrap();
-        
+
         let alpha = -5.0;
         let rho = 2.0;
-        
+
         let l_rho = augmented_lagrangian(&w, alpha, rho, &data, &config).unwrap();
         assert!(l_rho.is_finite());
     }
@@ -1152,14 +1184,14 @@ mod tests {
         let data = ndarray::array![[1.0, 2.0], [3.0, 4.0]];
         let w = ndarray::array![[0.1, 0.05], [-0.05, 0.2]];
         let config = RegularizationConfig::new(0.1, false).unwrap();
-        
+
         let alpha = 1.0;
         let rho_small = 0.1;
         let rho_large = 1000.0;
-        
+
         let l_small = augmented_lagrangian(&w, alpha, rho_small, &data, &config).unwrap();
         let l_large = augmented_lagrangian(&w, alpha, rho_large, &data, &config).unwrap();
-        
+
         // With large rho, penalty term dominates (unless h ≈ 0)
         let h_w = acyclicity::acyclicity_constraint(&w).unwrap();
         if h_w.abs() > 1e-6 {
@@ -1173,7 +1205,7 @@ mod tests {
         let data = ndarray::array![[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]];
         let w = Array2::zeros((2, 2));
         let config = RegularizationConfig::new(0.1, false).unwrap();
-        
+
         assert!(augmented_lagrangian(&w, 1.0, 1.0, &data, &config).is_err());
     }
 
@@ -1183,7 +1215,7 @@ mod tests {
         let data = ndarray::array![[1.0, 2.0], [3.0, 4.0]];
         let w = ndarray::array![[0.1, 0.05], [-0.05, 0.2]];
         let config = RegularizationConfig::new(0.1, false).unwrap();
-        
+
         assert!(augmented_lagrangian(&w, 1.0, 0.0, &data, &config).is_err());
         assert!(augmented_lagrangian(&w, 1.0, -1.0, &data, &config).is_err());
     }
@@ -1194,7 +1226,7 @@ mod tests {
         let data = ndarray::array![[1.0, 2.0], [3.0, 4.0]];
         let w = ndarray::array![[0.1, 0.05], [-0.05, 0.2]];
         let config = RegularizationConfig::new(0.1, false).unwrap();
-        
+
         assert!(augmented_lagrangian(&w, f64::NAN, 1.0, &data, &config).is_err());
         assert!(augmented_lagrangian(&w, f64::INFINITY, 1.0, &data, &config).is_err());
     }
@@ -1206,10 +1238,10 @@ mod tests {
         // Use weights that violate acyclicity (cycle)
         let w = ndarray::array![[0.0, 0.5], [0.5, 0.0]];
         let config = RegularizationConfig::new(0.1, false).unwrap();
-        
+
         let alpha = 1.0;
         let rho_values = vec![1.0, 2.0, 5.0, 10.0];
-        
+
         let mut prev_l = f64::NEG_INFINITY;
         for rho in rho_values {
             let l_rho = augmented_lagrangian(&w, alpha, rho, &data, &config).unwrap();
@@ -1226,7 +1258,7 @@ mod tests {
         let data = ndarray::array![[1e-10, 2e-10], [3e-10, 4e-10]];
         let w = ndarray::array![[1e-15, 1e-15], [1e-15, 1e-15]];
         let config = RegularizationConfig::new(0.1, false).unwrap();
-        
+
         let l_rho = augmented_lagrangian(&w, 1.0, 1.0, &data, &config).unwrap();
         assert!(l_rho.is_finite());
     }
@@ -1241,11 +1273,7 @@ mod tests {
     #[test]
     fn test_solve_trivial() -> Result<(), Box<dyn std::error::Error>> {
         // Create simple synthetic data (identity structure)
-        let data = ndarray::array![
-            [1.0, 0.0],
-            [0.0, 1.0],
-            [1.0, 1.0]
-        ];
+        let data = ndarray::array![[1.0, 0.0], [0.0, 1.0], [1.0, 1.0]];
 
         let config = OptimizationConfig::new(100, 50, 10, 1e-6, 1.0, 0.25, 0.3)?;
         let loss_config = RegularizationConfig::new(0.1, false)?;
@@ -1272,7 +1300,11 @@ mod tests {
         let grad_f = scoring::score_gradient(&w, &data, &config).unwrap();
 
         // At h=0, constraint terms vanish
-        let diff_norm = (&grad_l_rho - &grad_f).iter().map(|x| x*x).sum::<f64>().sqrt();
+        let diff_norm = (&grad_l_rho - &grad_f)
+            .iter()
+            .map(|x| x * x)
+            .sum::<f64>()
+            .sqrt();
         assert!(diff_norm < 1e-12);
     }
 
@@ -1296,7 +1328,11 @@ mod tests {
         let penalty_multiplier = rho * h_w + alpha;
         let expected = grad_f + penalty_multiplier * &grad_h;
 
-        let diff_norm = (&grad_l_rho - &expected).iter().map(|x| x*x).sum::<f64>().sqrt();
+        let diff_norm = (&grad_l_rho - &expected)
+            .iter()
+            .map(|x| x * x)
+            .sum::<f64>()
+            .sqrt();
         assert!(diff_norm < 1e-12);
     }
 
@@ -1320,9 +1356,13 @@ mod tests {
 
         // Should be close (within rho*h*||∇h|| tolerance)
         let h_w = acyclicity::acyclicity_constraint(&w).unwrap();
-        let grad_h_norm = grad_h.iter().map(|x| x*x).sum::<f64>().sqrt();
+        let grad_h_norm = grad_h.iter().map(|x| x * x).sum::<f64>().sqrt();
         let tolerance = rho * h_w.abs() * grad_h_norm + 1e-10;
-        let diff_norm = (&grad_l_rho - &approximate_expected).iter().map(|x| x*x).sum::<f64>().sqrt();
+        let diff_norm = (&grad_l_rho - &approximate_expected)
+            .iter()
+            .map(|x| x * x)
+            .sum::<f64>()
+            .sqrt();
         assert!(diff_norm < tolerance);
     }
 
@@ -1345,7 +1385,11 @@ mod tests {
         let delta_expected = (alpha2 - alpha1) * &grad_h;
         let delta_actual = grad2 - grad1;
 
-        let diff_norm = (&delta_actual - &delta_expected).iter().map(|x| x*x).sum::<f64>().sqrt();
+        let diff_norm = (&delta_actual - &delta_expected)
+            .iter()
+            .map(|x| x * x)
+            .sum::<f64>()
+            .sqrt();
         assert!(diff_norm < 1e-12);
     }
 
@@ -1369,7 +1413,11 @@ mod tests {
         let delta_expected = (rho2 - rho1) * h_w * &grad_h;
         let delta_actual = grad2 - grad1;
 
-        let diff_norm = (&delta_actual - &delta_expected).iter().map(|x| x*x).sum::<f64>().sqrt();
+        let diff_norm = (&delta_actual - &delta_expected)
+            .iter()
+            .map(|x| x * x)
+            .sum::<f64>()
+            .sqrt();
         assert!(diff_norm < 1e-12);
     }
 
@@ -1384,7 +1432,8 @@ mod tests {
         let alpha = 1.5;
         let rho = 3.0;
 
-        let grad_analytical = augmented_lagrangian_gradient(&w, alpha, rho, &data, &config).unwrap();
+        let grad_analytical =
+            augmented_lagrangian_gradient(&w, alpha, rho, &data, &config).unwrap();
 
         let epsilon = 1e-5;
         let (d, _) = w.dim();
@@ -1423,7 +1472,7 @@ mod tests {
 
         let l_current = augmented_lagrangian(&w, alpha, rho, &data, &config).unwrap();
         let grad = augmented_lagrangian_gradient(&w, alpha, rho, &data, &config).unwrap();
-        let grad_norm = grad.iter().map(|x| x*x).sum::<f64>().sqrt();
+        let grad_norm = grad.iter().map(|x| x * x).sum::<f64>().sqrt();
 
         if grad_norm > 1e-10 {
             // Take small descent step
@@ -1433,9 +1482,13 @@ mod tests {
             let l_next = augmented_lagrangian(&w_next, alpha, rho, &data, &config).unwrap();
 
             // Gradient descent: should decrease objective
-            assert!(l_next < l_current + 1e-10,
+            assert!(
+                l_next < l_current + 1e-10,
                 "Gradient descent failed: L_current={}, L_next={}, gradient_norm={}",
-                l_current, l_next, grad_norm);
+                l_current,
+                l_next,
+                grad_norm
+            );
         }
     }
 
@@ -1464,16 +1517,21 @@ mod tests {
         let rho_small = 0.1;
         let rho_large = 1000.0;
 
-        let grad_small = augmented_lagrangian_gradient(&w, alpha, rho_small, &data, &config).unwrap();
-        let grad_large = augmented_lagrangian_gradient(&w, alpha, rho_large, &data, &config).unwrap();
+        let grad_small =
+            augmented_lagrangian_gradient(&w, alpha, rho_small, &data, &config).unwrap();
+        let grad_large =
+            augmented_lagrangian_gradient(&w, alpha, rho_large, &data, &config).unwrap();
 
         // With large rho, constraint term dominates (unless h ≈ 0)
         let h_w = acyclicity::acyclicity_constraint(&w).unwrap();
         if h_w.abs() > 1e-6 {
-            let norm_small = grad_small.iter().map(|x| x*x).sum::<f64>().sqrt();
-            let norm_large = grad_large.iter().map(|x| x*x).sum::<f64>().sqrt();
+            let norm_small = grad_small.iter().map(|x| x * x).sum::<f64>().sqrt();
+            let norm_large = grad_large.iter().map(|x| x * x).sum::<f64>().sqrt();
             // Penalty term should make large_rho gradient larger
-            assert!(norm_large > norm_small * 0.5, "Large rho should increase gradient norm");
+            assert!(
+                norm_large > norm_small * 0.5,
+                "Large rho should increase gradient norm"
+            );
         }
     }
 
@@ -1531,11 +1589,15 @@ mod tests {
         let rho = 5.0;
 
         let grad = augmented_lagrangian_gradient(&w, alpha, rho, &data, &config).unwrap();
-        let grad_norm = grad.iter().map(|x| x*x).sum::<f64>().sqrt();
+        let grad_norm = grad.iter().map(|x| x * x).sum::<f64>().sqrt();
 
         // Gradient norm should be reasonable for L-BFGS
         assert!(grad_norm < 1e6, "Gradient norm too large: {}", grad_norm);
-        assert!(grad_norm > 1e-8, "Gradient norm too small: {} (essentially zero)", grad_norm);
+        assert!(
+            grad_norm > 1e-8,
+            "Gradient norm too small: {} (essentially zero)",
+            grad_norm
+        );
     }
 
     // ==================== L-BFGS Solver Tests ====================
@@ -1546,7 +1608,7 @@ mod tests {
         let d = 2;
         let vec = Array1::from(vec![1.0, 2.0, 3.0, 4.0]);
         let mat = vec_to_matrix(&vec, d).unwrap();
-        
+
         assert_eq!(mat.dim(), (d, d));
         assert_eq!(mat[[0, 0]], 1.0);
         assert_eq!(mat[[0, 1]], 2.0);
@@ -1559,7 +1621,7 @@ mod tests {
         // Test matrix-vector conversion
         let mat = ndarray::array![[1.0, 2.0], [3.0, 4.0]];
         let vec = matrix_to_vec(&mat);
-        
+
         assert_eq!(vec.len(), 4);
         assert_eq!(vec[0], 1.0);
         assert_eq!(vec[1], 2.0);
@@ -1571,16 +1633,16 @@ mod tests {
     fn test_vec_matrix_roundtrip() {
         // Test bidirectional conversion preserves values
         let d = 3;
-        let mat_orig = ndarray::array![
-            [0.1, 0.2, 0.3],
-            [0.4, 0.5, 0.6],
-            [0.7, 0.8, 0.9]
-        ];
-        
+        let mat_orig = ndarray::array![[0.1, 0.2, 0.3], [0.4, 0.5, 0.6], [0.7, 0.8, 0.9]];
+
         let vec = matrix_to_vec(&mat_orig);
         let mat_converted = vec_to_matrix(&vec, d).unwrap();
-        
-        let diff_norm = (&mat_orig - &mat_converted).iter().map(|x| x*x).sum::<f64>().sqrt();
+
+        let diff_norm = (&mat_orig - &mat_converted)
+            .iter()
+            .map(|x| x * x)
+            .sum::<f64>()
+            .sqrt();
         assert!(diff_norm < 1e-14);
     }
 
@@ -1603,7 +1665,8 @@ mod tests {
         let alpha = 0.0;
         let rho = 1.0;
 
-        let result = solve_primal_subproblem(&w_init, alpha, rho, &data, &config, &optimizer_config);
+        let result =
+            solve_primal_subproblem(&w_init, alpha, rho, &data, &config, &optimizer_config);
         assert!(result.is_ok());
 
         let (w_opt, iters) = result.unwrap();
@@ -1626,15 +1689,20 @@ mod tests {
         let l_init = augmented_lagrangian(&w_init, alpha, rho, &data, &config).unwrap();
 
         // Run L-BFGS
-        let (w_opt, _iters) = solve_primal_subproblem(
-            &w_init, alpha, rho, &data, &config, &optimizer_config
-        ).unwrap();
+        let (w_opt, _iters) =
+            solve_primal_subproblem(&w_init, alpha, rho, &data, &config, &optimizer_config)
+                .unwrap();
 
         // Compute final objective
         let l_final = augmented_lagrangian(&w_opt, alpha, rho, &data, &config).unwrap();
 
         // L-BFGS should decrease objective
-        assert!(l_final <= l_init + 1e-10, "L-BFGS failed to decrease: initial={}, final={}", l_init, l_final);
+        assert!(
+            l_final <= l_init + 1e-10,
+            "L-BFGS failed to decrease: initial={}, final={}",
+            l_init,
+            l_final
+        );
     }
 
     #[test]
@@ -1645,9 +1713,8 @@ mod tests {
         let config = RegularizationConfig::new(0.1, false).unwrap();
         let optimizer_config = OptimizationConfig::default();
 
-        let (_w_opt, iters) = solve_primal_subproblem(
-            &w_init, 0.0, 1.0, &data, &config, &optimizer_config
-        ).unwrap();
+        let (_w_opt, iters) =
+            solve_primal_subproblem(&w_init, 0.0, 1.0, &data, &config, &optimizer_config).unwrap();
 
         // Should have at least 1 iteration
         assert!(iters >= 1);
@@ -1669,9 +1736,9 @@ mod tests {
         let alpha = 1.0;
         let rho = 2.0;
 
-        let (_w_opt, iters) = solve_primal_subproblem(
-            &w_init, alpha, rho, &data, &config, &optimizer_config
-        ).unwrap();
+        let (_w_opt, iters) =
+            solve_primal_subproblem(&w_init, alpha, rho, &data, &config, &optimizer_config)
+                .unwrap();
 
         // Iterations should not exceed configured maximum
         assert!(iters <= 5 || iters <= optimizer_config.max_lbfgs_iterations + 1);
@@ -1686,9 +1753,13 @@ mod tests {
         let optimizer_config = OptimizationConfig::default();
 
         // Negative rho should fail
-        assert!(solve_primal_subproblem(&w_init, 0.0, -1.0, &data, &config, &optimizer_config).is_err());
+        assert!(
+            solve_primal_subproblem(&w_init, 0.0, -1.0, &data, &config, &optimizer_config).is_err()
+        );
         // Zero rho should fail
-        assert!(solve_primal_subproblem(&w_init, 0.0, 0.0, &data, &config, &optimizer_config).is_err());
+        assert!(
+            solve_primal_subproblem(&w_init, 0.0, 0.0, &data, &config, &optimizer_config).is_err()
+        );
     }
 
     #[test]
@@ -1700,9 +1771,20 @@ mod tests {
         let optimizer_config = OptimizationConfig::default();
 
         // NaN alpha should fail
-        assert!(solve_primal_subproblem(&w_init, f64::NAN, 1.0, &data, &config, &optimizer_config).is_err());
+        assert!(
+            solve_primal_subproblem(&w_init, f64::NAN, 1.0, &data, &config, &optimizer_config)
+                .is_err()
+        );
         // Infinite alpha should fail
-        assert!(solve_primal_subproblem(&w_init, f64::INFINITY, 1.0, &data, &config, &optimizer_config).is_err());
+        assert!(solve_primal_subproblem(
+            &w_init,
+            f64::INFINITY,
+            1.0,
+            &data,
+            &config,
+            &optimizer_config
+        )
+        .is_err());
     }
 
     #[test]
@@ -1713,9 +1795,8 @@ mod tests {
         let config = RegularizationConfig::new(0.1, false).unwrap();
         let optimizer_config = OptimizationConfig::default();
 
-        let (w_opt, _iters) = solve_primal_subproblem(
-            &w_init, 1.0, 1.0, &data, &config, &optimizer_config
-        ).unwrap();
+        let (w_opt, _iters) =
+            solve_primal_subproblem(&w_init, 1.0, 1.0, &data, &config, &optimizer_config).unwrap();
 
         // Result should be finite and not diverge
         assert!(w_opt.iter().all(|x| x.is_finite()));
@@ -1724,23 +1805,16 @@ mod tests {
     #[test]
     fn test_solve_primal_subproblem_with_larger_matrix() {
         // Test L-BFGS with 3×3 weight matrix
-        let data = ndarray::array![
-            [1.0, 2.0, 3.0],
-            [4.0, 5.0, 6.0],
-            [7.0, 8.0, 9.0]
-        ];
-        let w_init = ndarray::array![
-            [0.1, 0.05, 0.0],
-            [0.0, 0.15, 0.1],
-            [0.05, 0.0, 0.2]
-        ];
+        let data = ndarray::array![[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]];
+        let w_init = ndarray::array![[0.1, 0.05, 0.0], [0.0, 0.15, 0.1], [0.05, 0.0, 0.2]];
         let config = RegularizationConfig::new(0.1, false).unwrap();
         let optimizer_config = OptimizationConfig::default();
 
         let alpha = 1.0;
         let rho = 2.0;
 
-        let result = solve_primal_subproblem(&w_init, alpha, rho, &data, &config, &optimizer_config);
+        let result =
+            solve_primal_subproblem(&w_init, alpha, rho, &data, &config, &optimizer_config);
         assert!(result.is_ok());
 
         let (w_opt, iters) = result.unwrap();
@@ -1762,20 +1836,24 @@ mod tests {
 
         // Compute initial gradient norm
         let grad_init = augmented_lagrangian_gradient(&w_init, alpha, rho, &data, &config).unwrap();
-        let grad_init_norm = grad_init.iter().map(|x| x*x).sum::<f64>().sqrt();
+        let grad_init_norm = grad_init.iter().map(|x| x * x).sum::<f64>().sqrt();
 
         // Run optimization
-        let (w_opt, _iters) = solve_primal_subproblem(
-            &w_init, alpha, rho, &data, &config, &optimizer_config
-        ).unwrap();
+        let (w_opt, _iters) =
+            solve_primal_subproblem(&w_init, alpha, rho, &data, &config, &optimizer_config)
+                .unwrap();
 
         // Compute final gradient norm
         let grad_final = augmented_lagrangian_gradient(&w_opt, alpha, rho, &data, &config).unwrap();
-        let grad_final_norm = grad_final.iter().map(|x| x*x).sum::<f64>().sqrt();
+        let grad_final_norm = grad_final.iter().map(|x| x * x).sum::<f64>().sqrt();
 
         // L-BFGS should reduce gradient norm significantly
-        assert!(grad_final_norm < grad_init_norm, 
-            "Gradient norm not reduced: initial={}, final={}", grad_init_norm, grad_final_norm);
+        assert!(
+            grad_final_norm < grad_init_norm,
+            "Gradient norm not reduced: initial={}, final={}",
+            grad_init_norm,
+            grad_final_norm
+        );
     }
 
     #[test]
@@ -1802,11 +1880,7 @@ mod tests {
     #[test]
     fn test_solve_ecp_accepts_valid_inputs() {
         // Test that solve_ecp accepts valid inputs and returns result structure
-        let data = ndarray::array![
-            [1.0, 2.0],
-            [3.0, 4.0],
-            [5.0, 6.0],
-        ];
+        let data = ndarray::array![[1.0, 2.0], [3.0, 4.0], [5.0, 6.0],];
         let w_init = Array2::zeros((2, 2));
         let config = RegularizationConfig::new(0.1, false).unwrap();
 
@@ -1823,10 +1897,7 @@ mod tests {
     #[test]
     fn test_solve_ecp_dimension_validation() {
         // Test that dimension mismatches are caught
-        let data = ndarray::array![
-            [1.0, 2.0],
-            [3.0, 4.0],
-        ];
+        let data = ndarray::array![[1.0, 2.0], [3.0, 4.0],];
         let w_init = Array2::zeros((3, 3)); // Mismatch: data is 2x2
         let config = RegularizationConfig::new(0.1, false).unwrap();
 
@@ -1852,11 +1923,7 @@ mod tests {
     #[test]
     fn test_solve_ecp_output_structure() {
         // Test that successful OptimizationResult has correct structure
-        let data = ndarray::array![
-            [1.0, 2.0],
-            [3.0, 4.0],
-            [5.0, 6.0],
-        ];
+        let data = ndarray::array![[1.0, 2.0], [3.0, 4.0], [5.0, 6.0],];
         let w_init = Array2::zeros((2, 2));
         let config = RegularizationConfig::new(0.05, false).unwrap();
 
@@ -1874,10 +1941,13 @@ mod tests {
                 assert!(opt_result.constraint_violation >= 0.0);
                 assert!(opt_result.iterations > 0);
                 assert!(opt_result.final_score.is_finite());
-                
+
                 // Adjacency should only contain 0s and 1s
-                assert!(opt_result.adjacency_matrix.iter().all(|&x| x == 0 || x == 1));
-            },
+                assert!(opt_result
+                    .adjacency_matrix
+                    .iter()
+                    .all(|&x| x == 0 || x == 1));
+            }
             Err(_) => {
                 // Failed to converge is also acceptable for this test
             }
@@ -1887,11 +1957,7 @@ mod tests {
     #[test]
     fn test_solve_ecp_returns_finite_weights() {
         // Test that weight matrix contains finite values (no NaN/Inf)
-        let data = ndarray::array![
-            [1.0, 2.0],
-            [3.0, 4.0],
-            [5.0, 6.0],
-        ];
+        let data = ndarray::array![[1.0, 2.0], [3.0, 4.0], [5.0, 6.0],];
         let w_init = Array2::zeros((2, 2));
         let config = RegularizationConfig::new(0.1, false).unwrap();
 
@@ -1907,11 +1973,10 @@ mod tests {
                 assert!(opt_result.weight_matrix.iter().all(|x| x.is_finite()));
                 // Loss should be finite
                 assert!(opt_result.final_score.is_finite());
-            },
+            }
             Err(_) => {
                 // Convergence failure is acceptable
             }
         }
     }
 }
-

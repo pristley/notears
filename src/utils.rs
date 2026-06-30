@@ -16,9 +16,8 @@
 ///
 /// The algorithm achieves O(d³·log(d)) complexity and maintains relative error <1e-14
 /// for well-conditioned input matrices.
-
-use crate::types::{WeightMatrix, DataMatrix};
-use ndarray::{Array2, s};
+use crate::types::{DataMatrix, WeightMatrix};
+use ndarray::{s, Array2};
 use std::f64;
 
 /// Error types for utility operations
@@ -38,7 +37,9 @@ pub enum UtilError {
     #[error("Data matrix must have at least 1 sample and 1 variable")]
     InvalidDataMatrix,
 
-    #[error("Mismatch between data variables ({data_vars}) and weight matrix dimension ({weight_dim})")]
+    #[error(
+        "Mismatch between data variables ({data_vars}) and weight matrix dimension ({weight_dim})"
+    )]
     DimensionMismatch { data_vars: usize, weight_dim: usize },
 
     #[error("NaN or Inf detected in computation")]
@@ -64,12 +65,12 @@ pub fn standardize_data(data: &DataMatrix) -> Result<DataMatrix, UtilError> {
         let column = data.column(col);
         let mean = column.mean().ok_or(UtilError::NumericalError)?;
         let mut sum_sq_dev = 0.0;
-        
+
         for row in 0..n {
             let dev = standardized[[row, col]] - mean;
             sum_sq_dev += dev * dev;
         }
-        
+
         let std = (sum_sq_dev / (n as f64 - 1.0)).sqrt();
 
         if std > 0.0 {
@@ -110,15 +111,12 @@ pub fn standardize_data(data: &DataMatrix) -> Result<DataMatrix, UtilError> {
 /// - For symmetric input, output is approximately symmetric
 pub fn matrix_exponential(weight_matrix: &WeightMatrix) -> Result<WeightMatrix, UtilError> {
     let (n, m) = weight_matrix.dim();
-    
+
     // Validate input
     if n != m {
-        return Err(UtilError::NonSquareMatrix {
-            rows: n,
-            cols: m,
-        });
+        return Err(UtilError::NonSquareMatrix { rows: n, cols: m });
     }
-    
+
     if n > 500 {
         return Err(UtilError::NumericalError);
     }
@@ -181,7 +179,9 @@ fn matrix_exp_pade(a: &WeightMatrix) -> Result<(WeightMatrix, usize), UtilError>
 /// order-13 Padé rational approximant to the matrix exponential.
 ///
 /// Uses the simple Padé (3, 3) approximant: exp(A) ≈ (P(A)) * (Q(A))^{-1}
-fn pade13_numerator_denominator(a: &WeightMatrix) -> Result<(WeightMatrix, WeightMatrix), UtilError> {
+fn pade13_numerator_denominator(
+    a: &WeightMatrix,
+) -> Result<(WeightMatrix, WeightMatrix), UtilError> {
     let (_n, _) = a.dim();
     let eye: WeightMatrix = Array2::eye(_n);
 
@@ -193,10 +193,10 @@ fn pade13_numerator_denominator(a: &WeightMatrix) -> Result<(WeightMatrix, Weigh
     // Using the standard (m,m) Padé form: R(x) = p_m(x) / q_m(x)
     // For (3,3): p(x) = 1 + x/2 + x^2/10 + x^3/120
     //           q(x) = 1 - x/2 + x^2/10 - x^3/120
-    
+
     let b0 = 1.0;
     let b1 = 0.5;
-    let b2 = 1.0 / 10.0;  // 0.1
+    let b2 = 1.0 / 10.0; // 0.1
     let b3 = 1.0 / 120.0; // ≈ 0.0083333
 
     // Compute matrix products
@@ -204,7 +204,7 @@ fn pade13_numerator_denominator(a: &WeightMatrix) -> Result<(WeightMatrix, Weigh
     let a2b2 = &a2 * b2;
     let ab1 = a * b1;
     let eyeb0 = &eye * b0;
-    
+
     // P = b3*A^3 + b2*A^2 + b1*A + b0*I
     let p = a3b3.clone() + &a2b2 + &ab1 + &eyeb0;
 
@@ -214,15 +214,11 @@ fn pade13_numerator_denominator(a: &WeightMatrix) -> Result<(WeightMatrix, Weigh
     Ok((p, q))
 }
 
-
 /// Small matrix inversion using Gaussian elimination (numerically unstable for large matrices)
 fn invert_small_matrix(a: &WeightMatrix) -> Result<WeightMatrix, UtilError> {
     let (n, m) = a.dim();
     if n != m {
-        return Err(UtilError::NonSquareMatrix {
-            rows: n,
-            cols: m,
-        });
+        return Err(UtilError::NonSquareMatrix { rows: n, cols: m });
     }
 
     // Use LU decomposition via ndarray
@@ -276,13 +272,13 @@ fn invert_small_matrix(a: &WeightMatrix) -> Result<WeightMatrix, UtilError> {
 }
 
 /// Validate weight matrix shape
-pub fn validate_weight_matrix(w: &WeightMatrix, expected_dim: Option<usize>) -> Result<(), UtilError> {
+pub fn validate_weight_matrix(
+    w: &WeightMatrix,
+    expected_dim: Option<usize>,
+) -> Result<(), UtilError> {
     let (n, m) = w.dim();
     if n != m {
-        return Err(UtilError::NonSquareMatrix {
-            rows: n,
-            cols: m,
-        });
+        return Err(UtilError::NonSquareMatrix { rows: n, cols: m });
     }
 
     if let Some(d) = expected_dim {
@@ -331,7 +327,10 @@ fn matrix_frobenius_norm(matrix: &WeightMatrix) -> f64 {
 
 /// Maximum absolute value in matrix
 pub fn matrix_max_abs(matrix: &WeightMatrix) -> f64 {
-    matrix.iter().map(|x| x.abs()).fold(f64::NEG_INFINITY, f64::max)
+    matrix
+        .iter()
+        .map(|x| x.abs())
+        .fold(f64::NEG_INFINITY, f64::max)
 }
 
 /// Extract binary adjacency matrix from continuous weight matrix via thresholding
@@ -372,7 +371,10 @@ pub fn matrix_max_abs(matrix: &WeightMatrix) -> f64 {
 /// let adjacency = extract_adjacency(&w, 0.3)?;
 /// // adjacency = [[0, 1], [1, 0]] - bidirectional edge
 /// ```
-pub fn extract_adjacency(w: &WeightMatrix, threshold: f64) -> Result<ndarray::Array2<i32>, UtilError> {
+pub fn extract_adjacency(
+    w: &WeightMatrix,
+    threshold: f64,
+) -> Result<ndarray::Array2<i32>, UtilError> {
     // Validate threshold
     if threshold < 0.0 {
         return Err(UtilError::NumericalError);
@@ -694,7 +696,14 @@ pub fn find_cycles(adjacency: &ndarray::Array2<i32>) -> Vec<Vec<usize>> {
 
     for start in 0..d {
         if !visited[start] {
-            dfs_find_cycles(start, adjacency, &mut visited, &mut rec_stack, &mut cycles, &mut path);
+            dfs_find_cycles(
+                start,
+                adjacency,
+                &mut visited,
+                &mut rec_stack,
+                &mut cycles,
+                &mut path,
+            );
         }
     }
 
@@ -870,7 +879,7 @@ pub fn print_validation_report(result: &crate::types::ValidationResult) {
     println!("=== DAG Validation Report ===");
     println!("Status: {}", result.status_summary());
     println!();
-    
+
     println!("Constraint h(W): {:.6e}", result.constraint_value);
     println!(
         "Acyclic (by constraint): {}",
@@ -880,7 +889,7 @@ pub fn print_validation_report(result: &crate::types::ValidationResult) {
             "✗ NO"
         }
     );
-    
+
     println!(
         "Acyclic (by topological sort): {}",
         if result.is_acyclic_by_topological_sort {
@@ -889,17 +898,17 @@ pub fn print_validation_report(result: &crate::types::ValidationResult) {
             "✗ NO"
         }
     );
-    
+
     println!("Number of edges: {}", result.num_edges);
     println!("Sparsity: {:.1}%", result.sparsity * 100.0);
-    
+
     if result.max_cycle_weight > 0.0 {
         println!("Max cycle weight: {:.6e}", result.max_cycle_weight);
         println!("  → Increase constraint tolerance or decrease threshold");
     } else {
         println!("Max cycle weight: 0.0 (no cycles detected)");
     }
-    
+
     println!("================");
 }
 
@@ -913,7 +922,7 @@ mod tests {
     fn test_standardize_data() {
         let data = ndarray::array![[1.0, 2.0], [2.0, 4.0], [3.0, 6.0]];
         let std = standardize_data(&data).unwrap();
-        
+
         // Check mean is ~0
         for col in 0..2 {
             let mean = std.column(col).mean().unwrap();
@@ -927,7 +936,7 @@ mod tests {
         let zero = Array2::zeros((3, 3));
         let exp_zero = matrix_exponential(&zero).unwrap();
         let identity = Array2::eye(3);
-        
+
         for i in 0..3 {
             for j in 0..3 {
                 let expected = identity[[i, j]];
@@ -943,10 +952,10 @@ mod tests {
         let a = ndarray::array![[-0.5, 0.1], [0.1, -0.3]];
         let scaled = &a * epsilon;
         let exp_scaled = matrix_exponential(&scaled).unwrap();
-        
+
         // Approximation: exp(ε*A) ≈ I + ε*A
         let expected = &Array2::eye(2) + &scaled;
-        
+
         for i in 0..2 {
             for j in 0..2 {
                 assert_abs_diff_eq!(exp_scaled[[i, j]], expected[[i, j]], epsilon = 1e-8);
@@ -959,10 +968,10 @@ mod tests {
         // Test eigendecomposition path for small matrices
         let w = ndarray::array![[0.0, 0.1], [0.1, 0.0]];
         let exp_w = matrix_exponential(&w).unwrap();
-        
+
         // Verify it's finite
         assert!(exp_w.iter().all(|x| x.is_finite()));
-        
+
         // For symmetric matrix, exp should be symmetric
         assert_abs_diff_eq!(exp_w[[0, 1]], exp_w[[1, 0]], epsilon = 1e-14);
     }
@@ -972,7 +981,7 @@ mod tests {
         // Test Padé approximation path for larger perturbations
         let w = ndarray::array![[-0.5, 0.2], [0.1, -0.3]];
         let exp_w = matrix_exponential(&w).unwrap();
-        
+
         // Verify all elements are finite
         assert!(exp_w.iter().all(|x| x.is_finite()));
     }
@@ -999,11 +1008,11 @@ mod tests {
         // For diagonal matrices, exp preserves eigenvalue structure
         let w = ndarray::array![[0.1, 0.0], [0.0, -0.1]];
         let exp_w = matrix_exponential(&w).unwrap();
-        
+
         // exp(diag(a, b)) ≈ diag(e^a, e^b) for well-conditioned matrices
         let diag1 = exp_w[[0, 0]];
         let diag2 = exp_w[[1, 1]];
-        
+
         // Check that diagonal elements are close to exp of input
         assert_abs_diff_eq!(diag1, 0.1_f64.exp(), epsilon = 1e-4);
         assert_abs_diff_eq!(diag2, (-0.1_f64).exp(), epsilon = 1e-4);
@@ -1015,10 +1024,10 @@ mod tests {
         let epsilon = 1e-15;
         let tiny = ndarray::array![[epsilon, 0.0], [0.0, epsilon]];
         let exp_tiny = matrix_exponential(&tiny).unwrap();
-        
+
         // exp(ε*I) ≈ I + ε*I
         let expected = &Array2::eye(2) + &(&tiny * 0.5); // First-order approximation
-        
+
         for i in 0..2 {
             for j in 0..2 {
                 assert_abs_diff_eq!(exp_tiny[[i, j]], expected[[i, j]], epsilon = 1e-14);
@@ -1029,7 +1038,7 @@ mod tests {
     #[test]
     fn test_extract_adjacency_basic() {
         let w = ndarray::array![[0.0, 0.5, 0.1], [0.2, 0.0, 0.8], [0.05, 0.3, 0.0]];
-        
+
         // Test with threshold 0.3
         let adj = extract_adjacency(&w, 0.3).unwrap();
         assert_eq!(adj[[0, 1]], 1); // |0.5| > 0.3 ✓
@@ -1038,12 +1047,12 @@ mod tests {
         assert_eq!(adj[[1, 2]], 1); // |0.8| > 0.3 ✓
         assert_eq!(adj[[2, 0]], 0); // |0.05| ≤ 0.3 ✓
         assert_eq!(adj[[2, 1]], 0); // |0.3| ≤ 0.3 (boundary: NOT strict >)
-        
+
         // Test with threshold 0.1
         let adj_loose = extract_adjacency(&w, 0.1).unwrap();
         assert_eq!(adj_loose[[0, 2]], 0); // |0.1| ≤ 0.1 (boundary: NOT strict >)
         assert_eq!(adj_loose[[2, 0]], 0); // |0.05| ≤ 0.1 ✓
-        
+
         // Test with threshold 0.05
         let adj_lower = extract_adjacency(&w, 0.05).unwrap();
         assert_eq!(adj_lower[[0, 2]], 1); // |0.1| > 0.05 ✓
@@ -1092,7 +1101,7 @@ mod tests {
     fn test_analyze_weight_distribution() {
         let w = ndarray::array![[0.0, 0.9], [-0.1, 0.0]];
         let analysis = analyze_weight_distribution(&w);
-        
+
         assert_eq!(analysis.max_weight, 0.9);
         assert_eq!(analysis.num_nonzero, 2); // 0.9 and 0.1
         assert!(analysis.sparsity > 0.0 && analysis.sparsity < 1.0);
@@ -1103,11 +1112,11 @@ mod tests {
     fn test_analyze_weight_distribution_sorted() {
         let w = ndarray::array![[0.0, 0.5], [-0.8, 0.0]];
         let analysis = analyze_weight_distribution(&w);
-        
+
         // Weights should be sorted in descending order
         assert_eq!(analysis.sorted_weights[0], 0.8);
         assert_eq!(analysis.sorted_weights[1], 0.5);
-        
+
         // Gap-based threshold should be between them
         let threshold = analysis.gap_based_threshold;
         assert!(threshold > 0.5 && threshold < 0.8);
@@ -1118,7 +1127,7 @@ mod tests {
         // Large gap between 0.8 and 0.2
         let w = ndarray::array![[0.0, 0.8, 0.05], [0.05, 0.0, 0.2], [0.1, 0.15, 0.0]];
         let analysis = analyze_weight_distribution(&w);
-        
+
         assert!(analysis.max_weight > 0.0);
         // Gap-based threshold should be between large weights and small weights
         assert!(analysis.gap_based_threshold > 0.0);
@@ -1127,13 +1136,13 @@ mod tests {
     #[test]
     fn test_extract_adjacency_adaptive() {
         let w = ndarray::array![[0.0, 0.8], [-0.2, 0.0]];
-        
+
         let (adj, threshold) = extract_adjacency_adaptive(&w, 0.3).unwrap();
-        
+
         // Should extract binary adjacency
         assert_eq!(adj.dim(), (2, 2));
         assert!(adj.iter().all(|&x| x == 0 || x == 1));
-        
+
         // Threshold should be reasonable
         assert!(threshold >= 0.0 && threshold <= 0.8);
     }
@@ -1142,9 +1151,9 @@ mod tests {
     fn test_extract_adjacency_adaptive_fallback() {
         // No clear gap: uniform weights
         let w = ndarray::array![[0.0, 0.5], [-0.5, 0.0]];
-        
+
         let (adj, _threshold) = extract_adjacency_adaptive(&w, 0.3).unwrap();
-        
+
         // Should use default threshold when no clear gap
         assert_eq!(adj[[0, 1]], 1); // 0.5 > 0.3
         assert_eq!(adj[[1, 0]], 1); // 0.5 > 0.3 (absolute value)
@@ -1267,12 +1276,7 @@ mod tests {
     #[test]
     fn test_find_cycles_multiple_cycles() {
         // Graph with two independent cycles: A↔B and C↔D
-        let adj = ndarray::array![
-            [0, 1, 0, 0],
-            [1, 0, 0, 0],
-            [0, 0, 0, 1],
-            [0, 0, 1, 0],
-        ];
+        let adj = ndarray::array![[0, 1, 0, 0], [1, 0, 0, 0], [0, 0, 0, 1], [0, 0, 1, 0],];
         let cycles = find_cycles(&adj);
         assert_eq!(cycles.len(), 2); // Two cycles
     }

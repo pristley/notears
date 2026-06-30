@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["OptimizationError"],"fn":["augmented_lagrangian","augmented_lagrangian_gradient","solve","solve_ecp","solve_primal_subproblem","solve_with_config"],"struct":["NotearsSolver"]};

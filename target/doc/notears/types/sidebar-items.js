@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["ConfigError"],"struct":["OptimizationConfig","OptimizationResult","RegularizationConfig","ValidationResult"],"type":["DataMatrix","GradientMatrix","WeightMatrix"]};

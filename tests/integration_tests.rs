@@ -1,9 +1,8 @@
+use approx::assert_abs_diff_eq;
+use ndarray::Array2;
 /// Integration tests for NOTEARS algorithm
 /// Tests against synthetic benchmarks and algorithm correctness
-
 use notears::*;
-use ndarray::Array2;
-use approx::assert_abs_diff_eq;
 
 #[test]
 fn test_zero_matrix_acyclic() {
@@ -60,11 +59,7 @@ fn test_gradient_finite_differences() -> Result<(), Box<dyn std::error::Error>> 
     // Check gradient matches (with reasonable tolerance for numerical errors)
     for i in 0..2 {
         for j in 0..2 {
-            assert_abs_diff_eq!(
-                grad_analytic[[i, j]],
-                grad_numeric[[i, j]],
-                epsilon = 1e-2
-            );
+            assert_abs_diff_eq!(grad_analytic[[i, j]], grad_numeric[[i, j]], epsilon = 1e-2);
         }
     }
 

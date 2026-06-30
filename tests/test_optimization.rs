@@ -8,10 +8,10 @@
 
 mod common;
 
+use ndarray::Array2;
+use notears::acyclicity::acyclicity_constraint;
 use notears::optimization::solve_ecp;
 use notears::types::{OptimizationConfig, RegularizationConfig};
-use notears::acyclicity::acyclicity_constraint;
-use ndarray::Array2;
 
 #[test]
 #[ignore] // Solver convergence on synthetic random data is known issue
@@ -27,7 +27,10 @@ fn test_solve_ecp_small_dag() {
 
     match solve_ecp(&w_init, &data, &reg_config, &opt_config) {
         Ok(result) => {
-            assert!(result.iterations < 100, "Should converge in reasonable iterations");
+            assert!(
+                result.iterations < 100,
+                "Should converge in reasonable iterations"
+            );
             assert!(
                 result.constraint_violation < 1e-4,
                 "Should satisfy acyclicity constraint"
@@ -107,7 +110,11 @@ fn test_solve_ecp_high_lambda() {
     match solve_ecp(&w_init, &data, &reg_config, &opt_config) {
         Ok(result) => {
             // Sparser solution expected
-            let edges_high_lambda = result.weight_matrix.iter().filter(|x| x.abs() > 0.01).count();
+            let edges_high_lambda = result
+                .weight_matrix
+                .iter()
+                .filter(|x| x.abs() > 0.01)
+                .count();
             assert!(edges_high_lambda <= d * d / 2); // At most half edges
         }
         Err(_) => {}
@@ -127,8 +134,8 @@ fn test_solve_ecp_acyclicity_satisfied() {
     match solve_ecp(&w_init, &data, &reg_config, &opt_config) {
         Ok(result) => {
             // Check h(W) is small
-            let h = acyclicity_constraint(&result.weight_matrix)
-                .expect("h(W) should be computable");
+            let h =
+                acyclicity_constraint(&result.weight_matrix).expect("h(W) should be computable");
             assert!(
                 h < 1e-3 || h < 0.1,
                 "h(W) should be reasonably small, got {}",

@@ -1,0 +1,144 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Solve NO TEARS problem using dual ascent (ECP) algorithm"><title>solve_ecp in notears::optimization - Rust</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Italic-81dc35de.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-MediumItalic-ccf7e434.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2"href="../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../../static.files/rustdoc-17e0aaed.css"><meta name="rustdoc-vars" data-root-path="../../" data-static-root-path="../../static.files/" data-current-crate="notears" data-themes="" data-resource-suffix="" data-rustdoc-version="1.96.1 (31fca3adb 2026-06-26)" data-channel="1.96.1" data-search-js="search-b5634cc7.js" data-stringdex-js="stringdex-2da4960a.js" data-settings-js="settings-170eb4bf.js" ><script src="../../static.files/storage-41dd4d93.js"></script><script defer src="sidebar-items.js"></script><script defer src="../../static.files/main-5013f961.js"></script><noscript><link rel="stylesheet" href="../../static.files/noscript-f7c3ffd8.css"></noscript><link rel="alternate icon" type="image/png" href="../../static.files/favicon-32x32-eab170b8.png"><link rel="icon" type="image/svg+xml" href="../../static.files/favicon-044be391.svg"></head><body class="rustdoc fn"><a class="skip-main-content" href="#main-content">Skip to main content</a><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><rustdoc-topbar><h2><a href="#">solve_ecp</a></h2></rustdoc-topbar><nav class="sidebar"><div class="sidebar-crate"><h2><a href="../../notears/index.html">notears</a><span class="version">0.1.0</span></h2></div><div class="sidebar-elems"><section id="rustdoc-toc"><h2 class="location"><a href="#">solve_<wbr>ecp</a></h2><h3><a href="#">Sections</a></h3><ul class="block top-toc"><li><a href="#arguments" title="Arguments">Arguments</a></li><li><a href="#returns" title="Returns">Returns</a></li><li><a href="#errors" title="Errors">Errors</a></li><li><a href="#logging-output" title="Logging Output">Logging Output</a></li><li><a href="#example-usage" title="Example Usage">Example Usage</a></li></ul></section><div id="rustdoc-modnav"><h2><a href="index.html">In notears::<wbr>optimization</a></h2></div></div></nav><div class="sidebar-resizer" title="Drag to resize sidebar"></div><main><div class="width-limiter"><section id="main-content" class="content" tabindex="-1"><div class="main-heading"><div class="rustdoc-breadcrumbs"><a href="../index.html">notears</a>::<wbr><a href="index.html">optimization</a></div><h1>Function <span class="fn">solve_<wbr>ecp</span>&nbsp;<button id="copy-path" title="Copy item path to clipboard">Copy item path</button></h1><rustdoc-toolbar></rustdoc-toolbar><span class="sub-heading"><a class="src" href="../../src/notears/optimization.rs.html#905-1042">Source</a> </span></div><pre class="rust item-decl"><code>pub fn solve_ecp(
+    w_init: &amp;<a class="type" href="../types/type.WeightMatrix.html" title="type notears::types::WeightMatrix">WeightMatrix</a>,
+    data: &amp;<a class="type" href="../types/type.DataMatrix.html" title="type notears::types::DataMatrix">DataMatrix</a>,
+    config: &amp;<a class="struct" href="../types/struct.RegularizationConfig.html" title="struct notears::types::RegularizationConfig">RegularizationConfig</a>,
+    optimizer_config: &amp;<a class="struct" href="../types/struct.OptimizationConfig.html" title="struct notears::types::OptimizationConfig">OptimizationConfig</a>,
+) -&gt; <a class="enum" href="https://doc.rust-lang.org/1.96.1/core/result/enum.Result.html" title="enum core::result::Result">Result</a>&lt;<a class="struct" href="../types/struct.OptimizationResult.html" title="struct notears::types::OptimizationResult">OptimizationResult</a>, <a class="enum" href="enum.OptimizationError.html" title="enum notears::optimization::OptimizationError">OptimizationError</a>&gt;</code></pre><details class="toggle top-doc" open><summary class="hideme"><span>Expand description</span></summary><div class="docblock"><p>Solve NO TEARS problem using dual ascent (ECP) algorithm</p>
+<p><strong>Algorithm 1 (Zheng et al. 2018):</strong>
+Augmented Lagrangian method with adaptive penalty and L-BFGS inner solver.</p>
+<p><strong>Problem Formulation:</strong>
+Minimize: F(W) = (1/(2n))||X - XW||²_F + λ||W||₁ (score function)
+Subject to: h(W) = tr(exp(W ⊙ W)) - d = 0 (acyclicity constraint)</p>
+<p><strong>Algorithm Steps:</strong></p>
+<ol>
+<li>
+<p><strong>Initialization</strong>:</p>
+<ul>
+<li>W₀: Initial weight matrix (typically zero)</li>
+<li>α₀ = 0.0 (dual variable for h(W) constraint)</li>
+<li>ρ₀ = penalty_rho_init (typically 1.0)</li>
+</ul>
+</li>
+<li>
+<p><strong>Outer Loop</strong> (for t = 0, 1, 2, …):
+a. <strong>Primal Step</strong>: Minimize L_ρ(W, α_t) via L-BFGS</p>
+<ul>
+<li>Solves: W_{t+1} ← argmin_W L_ρ(W, α_t)</li>
+<li>Uses L-BFGS quasi-Newton with line search</li>
+<li>Stops when ||∇_W L_ρ|| &lt; 1e-6 or max iterations reached</li>
+</ul>
+<p>b. <strong>Adaptive Penalty</strong>:</p>
+<ul>
+<li>Evaluate: h_new = h(W_{t+1})</li>
+<li>If h_new ≥ progress_rate * h_prev (default 0.25):
+<ul>
+<li>Increase penalty: ρ ← 10 * ρ (retry primal solve)</li>
+<li>Safety cap: ρ_max = 1e10</li>
+</ul>
+</li>
+<li>Once h_new &lt; 0.25 * h_prev: Accept W_{t+1}</li>
+</ul>
+<p>c. <strong>Dual Update</strong>:</p>
+<ul>
+<li>Update multiplier: α_{t+1} ← α_t + ρ * h(W_{t+1})</li>
+<li>Encodes constraint satisfaction in dual problem</li>
+<li>α generally increases in magnitude with ρ</li>
+</ul>
+<p>d. <strong>Convergence Check</strong>:</p>
+<ul>
+<li>If h(W_{t+1}) &lt; ε (default 1e-8): <em><em>Return W</em>_{t+1}</em>*</li>
+<li>Exit outer loop when constraint satisfied</li>
+</ul>
+</li>
+<li>
+<p><strong>Safeguards</strong>:</p>
+<ul>
+<li>Cap outer iterations (default 100)</li>
+<li>Cap penalty ρ at 1e10 to prevent overflow</li>
+<li>Detect NaN/Inf in weights and fail gracefully</li>
+<li>Log progress for diagnostics</li>
+</ul>
+</li>
+</ol>
+<p><strong>Convergence Theory:</strong></p>
+<ul>
+<li>For sufficiently large ρ and near-optimal α: R-linear convergence</li>
+<li>Typically achieves h(W) ~ 1e-8 in 5-15 outer iterations</li>
+<li>Each outer iteration: 50-100 L-BFGS iterations</li>
+<li>Total function evaluations: O(250-1500)</li>
+</ul>
+<p><strong>Performance Scaling:</strong></p>
+<ul>
+<li>Single function evaluation: O(n*d² + d³)
+<ul>
+<li>n*d²: MSE loss gradient</li>
+<li>d³: Matrix exponential bottleneck</li>
+</ul>
+</li>
+<li>For d=50, n=1000: ~10-60 seconds total</li>
+<li>Memory: O(d² + m*d) where m=LBFGS memory (10)</li>
+</ul>
+<p><strong>Failure Modes:</strong></p>
+<ul>
+<li>Non-convergence: Returns ConvergenceFailed error</li>
+<li>NaN/Inf detected: Returns InvalidState error</li>
+<li>Divergence: ρ exceeds 1e10, problem may be ill-posed</li>
+<li>Poor initialization: May converge to local minimum</li>
+</ul>
+<h2 id="arguments"><a class="doc-anchor" href="#arguments">§</a>Arguments</h2>
+<ul>
+<li><code>w_init</code> - Initial weight matrix W₀ (d×d), typically zeros or random</li>
+<li><code>data</code> - Data matrix X (n×d), should be standardized</li>
+<li><code>config</code> - Regularization config with λ ≥ 0</li>
+<li><code>optimizer_config</code> - Optimization parameters:
+<ul>
+<li><code>penalty_rho_init</code>: Initial penalty ρ₀ (typically 1.0)</li>
+<li><code>progress_rate</code>: Constraint progress threshold c (typically 0.25)</li>
+<li><code>constraint_tolerance</code>: Convergence threshold ε (typically 1e-8)</li>
+<li><code>max_outer_iterations</code>: Safety iteration cap (typically 100)</li>
+<li><code>lbfgs_memory</code>: Hessian approximation rank (typically 10)</li>
+<li><code>max_lbfgs_iterations</code>: Inner L-BFGS iterations (typically 100-200)</li>
+<li><code>edge_threshold</code>: Threshold for DAG edges (typically 0.3)</li>
+</ul>
+</li>
+</ul>
+<h2 id="returns"><a class="doc-anchor" href="#returns">§</a>Returns</h2>
+<p>OptimizationResult containing:</p>
+<ul>
+<li><code>weight_matrix</code>: Final W* (d×d)</li>
+<li><code>adjacency_matrix</code>: Binary DAG (thresholded W*)</li>
+<li><code>constraint_violation</code>: h(W*) (should be &lt; 1e-8 if converged)</li>
+<li><code>iterations</code>: Number of outer loop iterations</li>
+<li><code>final_score</code>: F(W*) value</li>
+</ul>
+<h2 id="errors"><a class="doc-anchor" href="#errors">§</a>Errors</h2>
+<p>Returns OptimizationError if:</p>
+<ul>
+<li>NaN/Inf detected in weights or gradients</li>
+<li>L-BFGS solver fails</li>
+<li>Constraint still violated after max_outer_iterations</li>
+<li>Configuration invalid</li>
+</ul>
+<h2 id="logging-output"><a class="doc-anchor" href="#logging-output">§</a>Logging Output</h2>
+<p>Per outer iteration:</p>
+<ul>
+<li><code>[Iter k] h(W) = H, α = A, ρ = P</code> - Constraint and dual variable</li>
+<li><code>[L-BFGS] I iterations</code> - Inner solver iterations</li>
+<li><code>[ρ adjusted] ρ ← new_ρ</code> - Penalty increases</li>
+<li><code>[Converged] h(W) &lt; ε</code> - Success</li>
+</ul>
+<h2 id="example-usage"><a class="doc-anchor" href="#example-usage">§</a>Example Usage</h2>
+<div class="example-wrap ignore"><a href="#" class="tooltip" title="This example is not tested">ⓘ</a><pre class="rust rust-example-rendered"><code><span class="kw">let </span>data = Array2::from_shape_fn((<span class="number">100</span>, <span class="number">10</span>), |(i, j)| (i <span class="kw">as </span>f64) + (j <span class="kw">as </span>f64));
+<span class="kw">let </span>w_init = Array2::zeros((<span class="number">10</span>, <span class="number">10</span>));
+<span class="kw">let </span>config = RegularizationConfig::new(<span class="number">0.1</span>, <span class="bool-val">false</span>)<span class="question-mark">?</span>;
+<span class="kw">let </span>opt_config = OptimizationConfig::default();
+
+<span class="kw">let </span>result = solve_ecp(
+    <span class="kw-2">&amp;</span>w_init,
+    <span class="kw-2">&amp;</span>data,
+    <span class="kw-2">&amp;</span>config,
+    <span class="kw-2">&amp;</span>opt_config,
+)<span class="question-mark">?</span>;
+
+<span class="macro">println!</span>(<span class="string">"Learned structure with {} edges"</span>, result.edge_count());
+<span class="macro">println!</span>(<span class="string">"Constraint violation: {:.2e}"</span>, result.constraint_violation);</code></pre></div></div></details></section></div></main></body></html>
