@@ -174,10 +174,14 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 ///
 /// This is NOT done automatically; use `standardize_data` if needed:
 /// ```rust,no_run
-/// use notears::{learn_dag, standardize_data};
-/// let data = load_csv("data.csv")?;
+/// use notears::{learn_dag, standardize_data, WeightMatrix};
+/// use ndarray::Array2;
+///
+/// // Example: load your data as WeightMatrix (n × d)
+/// let data: WeightMatrix = Array2::zeros((100, 5)); // n=100 samples, d=5 variables
 /// let standardized = standardize_data(&data)?;
 /// let result = learn_dag(&standardized, 0.1, 0.3, None)?;
+/// println!("Discovered edges: {}", result.edges().len());
 /// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
 pub fn learn_dag(
