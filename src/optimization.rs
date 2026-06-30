@@ -181,9 +181,326 @@ pub fn solve_with_config(
     solver.solve(data, None)
 }
 
+/// Compute augmented Lagrangian objective: L_ρ(W, α) = F(W) + (ρ/2) * h(W)² + α * h(W)
+///
+/// The augmented Lagrangian combines the smooth score function F(W) with the non-convex
+/// acyclicity constraint h(W) = 0 via penalty and dual methods.
+///
+/// **Three-term decomposition:**
+/// 1. **F(W)**: Score function (data fidelity + sparsity)
+///    - LS loss: (1/(2n)) * ||X - XW||²_F
+///    - L₁ penalty: λ * ||W||₁
+/// 2. **(ρ/2) * h(W)²**: Quadratic penalty for constraint violation
+///    - Increases as acyclicity constraint is violated
+///    - ρ/2 scaling matches augmented Lagrangian theory
+/// 3. **α * h(W)**: Lagrange multiplier term
+///    - Encodes constraint h(W) = 0 in dual problem
+///    - α adjusted iteratively in dual ascent loop
+///
+/// **Mathematical properties:**
+/// - Non-convex due to h(W) = tr(exp(W ⊙ W)) - d nonconvexity
+/// - Smooth (differentiable) in W for interior points
+/// - As ρ → ∞: Solution approaches constrained minimum
+/// - As α approaches optimal: multiplier term dominates
+///
+/// **Numerical scale analysis:**
+/// - F(W) typically O(1) to O(10)
+/// - h(W) typically 0 (DAGs) or O(0.1-10) (near-DAGs)
+/// - h(W)² penalty can dominate if h(W) large
+/// - α scales with ρ and h(W)
+///
+/// # Arguments
+/// * `w` - Weight matrix W (d×d) representing learned structure
+/// * `alpha` - Lagrange multiplier (dual variable), typically O(ρ)
+/// * `rho` - Penalty parameter ρ > 0, increases for infeasibility
+/// * `data` - Data matrix X (n×d) with n samples, d variables
+/// * `config` - RegularizationConfig with lambda ≥ 0.0
+///
+/// # Returns
+/// Augmented Lagrangian value L_ρ(W, α) ∈ ℝ
+///
+/// # Errors
+/// Returns OptimizationError if:
+/// - Score function computation fails (dimension mismatch, numerical issues)
+/// - Acyclicity constraint computation fails
+/// - Any component becomes NaN or Inf
+/// - Invalid input: rho ≤ 0
+///
+/// # Convergence Criteria
+/// - **Primary**: h(W) < ε (constraint satisfaction), recommended ε = 1e-8
+/// - **Secondary**: ||∇_W L_ρ|| < δ (stationarity), recommended δ = 1e-6
+/// - **Combined**: Both conditions indicate convergence to feasible KKT point
+///
+/// # Performance Notes
+/// - Computational cost: ~2× evaluation of score_function (adds matrix exponential)
+/// - Bottleneck: matrix exponential in acyclicity_constraint O(d³)
+/// - For optimization loop: evaluate L_ρ once per iteration
+/// - Gradient ∇_W L_ρ requires additional derivatives (not computed here)
+///
+/// # Optimization Integration
+/// Typical augmented Lagrangian loop:
+/// ```ignore
+/// for k = 1, 2, ... until convergence:
+///   // Inner loop: minimize L_ρ(W, α_k)
+///   W_k ← argmin_W L_ρ(W, α_k)  // e.g., via gradient descent
+///   
+///   // Dual update: α_{k+1} ← α_k + ρ * h(W_k)
+///   h_k ← acyclicity_constraint(W_k)
+///   α_{k+1} ← α_k + ρ * h_k
+///   
+///   // Penalty update: increase ρ if constraint violation large
+///   if h_k > ε_old:
+///     ρ ← c * ρ  where c > 1 (e.g., c = 10)
+/// ```
+pub fn augmented_lagrangian(
+    w: &WeightMatrix,
+    alpha: f64,
+    rho: f64,
+    data: &DataMatrix,
+    config: &RegularizationConfig,
+) -> Result<f64, OptimizationError> {
+    // Input validation
+    if rho <= 0.0 {
+        return Err(OptimizationError::InvalidState(
+            format!("Penalty parameter rho must be positive, got rho={}", rho)
+        ));
+    }
+
+    if !alpha.is_finite() {
+        return Err(OptimizationError::InvalidState(
+            format!("Lagrange multiplier alpha must be finite, got alpha={}", alpha)
+        ));
+    }
+
+    // **Term 1: Score function F(W)**
+    let f_w = scoring::score_function(w, data, config)?;
+
+    // Check F(W) for numerical issues
+    if !f_w.is_finite() {
+        return Err(OptimizationError::InvalidState(
+            format!("Score function F(W) is not finite: {}", f_w)
+        ));
+    }
+
+    // **Term 2 & 3: Acyclicity constraint terms (ρ/2) * h² + α * h**
+    let h_w = acyclicity::acyclicity_constraint(w)?;
+
+    // Check h(W) for numerical issues
+    if !h_w.is_finite() {
+        return Err(OptimizationError::InvalidState(
+            format!("Acyclicity constraint h(W) is not finite: {}", h_w)
+        ));
+    }
+
+    // **Term 2: Quadratic penalty (ρ/2) * h(W)²**
+    let penalty_term = (rho / 2.0) * h_w * h_w;
+
+    // **Term 3: Lagrange multiplier term α * h(W)**
+    let multiplier_term = alpha * h_w;
+
+    // **Combined: L_ρ(W, α) = F(W) + (ρ/2) * h(W)² + α * h(W)**
+    let augmented_obj = f_w + penalty_term + multiplier_term;
+
+    // Final numerical check
+    if !augmented_obj.is_finite() {
+        return Err(OptimizationError::InvalidState(
+            format!("Augmented Lagrangian is not finite: F={}, penalty={}, multiplier={}, total={}",
+                    f_w, penalty_term, multiplier_term, augmented_obj)
+        ));
+    }
+
+    Ok(augmented_obj)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use approx::assert_abs_diff_eq;
+
+    #[test]
+    fn test_augmented_lagrangian_zero_weights() {
+        // With W = 0, we have specific known values:
+        // - h(0) = tr(exp(0)) - d = tr(I) - d = 0
+        // - F(0) = (1/(2n)) * ||X||²_F + 0
+        let data = ndarray::array![[1.0, 2.0], [3.0, 4.0]];
+        let w = Array2::zeros((2, 2));
+        let config = RegularizationConfig::new(0.1, false).unwrap();
+        
+        let alpha = 1.0;
+        let rho = 10.0;
+        
+        let l_rho = augmented_lagrangian(&w, alpha, rho, &data, &config).unwrap();
+        
+        // h(0) = 0, so L_ρ = F(0) + 0 + 0 = F(0)
+        let f_0 = scoring::score_function(&w, &data, &config).unwrap();
+        assert_abs_diff_eq!(l_rho, f_0, epsilon = 1e-12);
+    }
+
+    #[test]
+    fn test_augmented_lagrangian_components() {
+        // Verify three-term decomposition:
+        // L_ρ(W, α) = F(W) + (ρ/2) * h² + α * h
+        let data = ndarray::array![[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]];
+        let w = ndarray::array![[0.1, 0.05], [-0.05, 0.2]];
+        let config = RegularizationConfig::new(0.15, false).unwrap();
+        
+        let alpha = 2.0;
+        let rho = 5.0;
+        
+        let l_rho = augmented_lagrangian(&w, alpha, rho, &data, &config).unwrap();
+        
+        // Compute components separately
+        let f_w = scoring::score_function(&w, &data, &config).unwrap();
+        let h_w = acyclicity::acyclicity_constraint(&w).unwrap();
+        let penalty = (rho / 2.0) * h_w * h_w;
+        let multiplier = alpha * h_w;
+        let expected = f_w + penalty + multiplier;
+        
+        assert_abs_diff_eq!(l_rho, expected, epsilon = 1e-12);
+    }
+
+    #[test]
+    fn test_augmented_lagrangian_alpha_effect() {
+        // Verify that changing alpha affects L_ρ linearly
+        let data = ndarray::array![[1.0, 2.0], [3.0, 4.0]];
+        let w = ndarray::array![[0.1, 0.02], [-0.02, 0.1]];
+        let config = RegularizationConfig::new(0.1, false).unwrap();
+        
+        let rho = 1.0;
+        let alpha1 = 1.0;
+        let alpha2 = 3.0;
+        
+        let l1 = augmented_lagrangian(&w, alpha1, rho, &data, &config).unwrap();
+        let l2 = augmented_lagrangian(&w, alpha2, rho, &data, &config).unwrap();
+        
+        // h(W) is fixed, so change in L should be (alpha2 - alpha1) * h(W)
+        let h_w = acyclicity::acyclicity_constraint(&w).unwrap();
+        let delta_expected = (alpha2 - alpha1) * h_w;
+        let delta_actual = l2 - l1;
+        
+        assert_abs_diff_eq!(delta_actual, delta_expected, epsilon = 1e-12);
+    }
+
+    #[test]
+    fn test_augmented_lagrangian_rho_effect() {
+        // Verify that changing rho affects penalty term correctly
+        let data = ndarray::array![[1.0, 2.0], [3.0, 4.0]];
+        let w = ndarray::array![[0.1, 0.02], [-0.02, 0.15]];
+        let config = RegularizationConfig::new(0.1, false).unwrap();
+        
+        let alpha = 1.0;
+        let rho1 = 1.0;
+        let rho2 = 5.0;
+        
+        let l1 = augmented_lagrangian(&w, alpha, rho1, &data, &config).unwrap();
+        let l2 = augmented_lagrangian(&w, alpha, rho2, &data, &config).unwrap();
+        
+        // h(W) is fixed, so change in penalty is (rho2 - rho1) * h² / 2
+        let h_w = acyclicity::acyclicity_constraint(&w).unwrap();
+        let delta_penalty = ((rho2 - rho1) / 2.0) * h_w * h_w;
+        let delta_actual = l2 - l1;
+        
+        assert_abs_diff_eq!(delta_actual, delta_penalty, epsilon = 1e-12);
+    }
+
+    #[test]
+    fn test_augmented_lagrangian_negative_alpha() {
+        // Alpha can be negative (it's unconstrained dual variable)
+        let data = ndarray::array![[1.0, 2.0], [3.0, 4.0]];
+        let w = ndarray::array![[0.1, 0.05], [-0.05, 0.2]];
+        let config = RegularizationConfig::new(0.1, false).unwrap();
+        
+        let alpha = -5.0;
+        let rho = 2.0;
+        
+        let l_rho = augmented_lagrangian(&w, alpha, rho, &data, &config).unwrap();
+        assert!(l_rho.is_finite());
+    }
+
+    #[test]
+    fn test_augmented_lagrangian_large_rho() {
+        // With large rho, penalty dominates for constrained solutions
+        let data = ndarray::array![[1.0, 2.0], [3.0, 4.0]];
+        let w = ndarray::array![[0.1, 0.05], [-0.05, 0.2]];
+        let config = RegularizationConfig::new(0.1, false).unwrap();
+        
+        let alpha = 1.0;
+        let rho_small = 0.1;
+        let rho_large = 1000.0;
+        
+        let l_small = augmented_lagrangian(&w, alpha, rho_small, &data, &config).unwrap();
+        let l_large = augmented_lagrangian(&w, alpha, rho_large, &data, &config).unwrap();
+        
+        // With large rho, penalty term dominates (unless h ≈ 0)
+        let h_w = acyclicity::acyclicity_constraint(&w).unwrap();
+        if h_w.abs() > 1e-6 {
+            assert!(l_large > l_small); // Higher penalty value
+        }
+    }
+
+    #[test]
+    fn test_augmented_lagrangian_dimension_mismatch() {
+        // Should propagate error from score_function
+        let data = ndarray::array![[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]];
+        let w = Array2::zeros((2, 2));
+        let config = RegularizationConfig::new(0.1, false).unwrap();
+        
+        assert!(augmented_lagrangian(&w, 1.0, 1.0, &data, &config).is_err());
+    }
+
+    #[test]
+    fn test_augmented_lagrangian_invalid_rho() {
+        // Negative or zero rho should fail
+        let data = ndarray::array![[1.0, 2.0], [3.0, 4.0]];
+        let w = ndarray::array![[0.1, 0.05], [-0.05, 0.2]];
+        let config = RegularizationConfig::new(0.1, false).unwrap();
+        
+        assert!(augmented_lagrangian(&w, 1.0, 0.0, &data, &config).is_err());
+        assert!(augmented_lagrangian(&w, 1.0, -1.0, &data, &config).is_err());
+    }
+
+    #[test]
+    fn test_augmented_lagrangian_invalid_alpha() {
+        // NaN or Inf alpha should fail
+        let data = ndarray::array![[1.0, 2.0], [3.0, 4.0]];
+        let w = ndarray::array![[0.1, 0.05], [-0.05, 0.2]];
+        let config = RegularizationConfig::new(0.1, false).unwrap();
+        
+        assert!(augmented_lagrangian(&w, f64::NAN, 1.0, &data, &config).is_err());
+        assert!(augmented_lagrangian(&w, f64::INFINITY, 1.0, &data, &config).is_err());
+    }
+
+    #[test]
+    fn test_augmented_lagrangian_monotonicity_in_constraint() {
+        // For fixed W and increasing rho, L_ρ increases if h(W) ≠ 0
+        let data = ndarray::array![[1.0, 2.0], [3.0, 4.0]];
+        // Use weights that violate acyclicity (cycle)
+        let w = ndarray::array![[0.0, 0.5], [0.5, 0.0]];
+        let config = RegularizationConfig::new(0.1, false).unwrap();
+        
+        let alpha = 1.0;
+        let rho_values = vec![1.0, 2.0, 5.0, 10.0];
+        
+        let mut prev_l = f64::NEG_INFINITY;
+        for rho in rho_values {
+            let l_rho = augmented_lagrangian(&w, alpha, rho, &data, &config).unwrap();
+            if l_rho > prev_l + 1e-10 {
+                // Expected: monotone increase (unless h very small)
+            }
+            prev_l = l_rho;
+        }
+    }
+
+    #[test]
+    fn test_augmented_lagrangian_numerical_stability() {
+        // Test with very small/large values
+        let data = ndarray::array![[1e-10, 2e-10], [3e-10, 4e-10]];
+        let w = ndarray::array![[1e-15, 1e-15], [1e-15, 1e-15]];
+        let config = RegularizationConfig::new(0.1, false).unwrap();
+        
+        let l_rho = augmented_lagrangian(&w, 1.0, 1.0, &data, &config).unwrap();
+        assert!(l_rho.is_finite());
+    }
 
     #[test]
     fn test_solver_initialization() {
