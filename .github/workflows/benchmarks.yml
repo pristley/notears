@@ -1,0 +1,69 @@
+name: Benchmarks
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  benchmark:
+    name: Performance Benchmarks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0  # For comparing with main
+      
+      - uses: dtolnay/rust-toolchain@stable
+      
+      - uses: Swatinem/rust-cache@v2
+      
+      - name: Run matrix operations benchmarks
+        run: cargo bench --bench bench_matrix_ops -- --output-format bencher | tee matrix_output.txt
+      
+      - name: Run optimization benchmarks
+        run: cargo bench --bench bench_optimization -- --output-format bencher | tee opt_output.txt
+      
+      - name: Run end-to-end benchmarks
+        run: cargo bench --bench bench_end_to_end -- --output-format bencher | tee e2e_output.txt
+      
+      - name: Store benchmark results
+        uses: benchmark-action/github-action-benchmark@v1
+        if: always()
+        with:
+          tool: 'cargo'
+          output-file-path: matrix_output.txt
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          auto-push: true
+          alert-threshold: '110%'
+          comment-on-alert: true
+          fail-on-alert: false
+
+  flamegraph:
+    name: Flamegraph Profile
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v3
+      
+      - uses: dtolnay/rust-toolchain@stable
+      
+      - uses: Swatinem/rust-cache@v2
+      
+      - name: Install flamegraph
+        run: cargo install flamegraph
+      
+      - name: Run flamegraph on end-to-end benchmarks
+        run: cargo flamegraph --bench bench_end_to_end -o flamegraph.svg -- --verbose d20_n1000
+        continue-on-error: true
+      
+      - name: Upload flamegraph artifact
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: flamegraph
+          path: flamegraph.svg
