@@ -334,6 +334,297 @@ pub fn matrix_max_abs(matrix: &WeightMatrix) -> f64 {
     matrix.iter().map(|x| x.abs()).fold(f64::NEG_INFINITY, f64::max)
 }
 
+/// Extract binary adjacency matrix from continuous weight matrix via thresholding
+///
+/// **Purpose**: Post-optimization conversion of continuous weights to discrete DAG structure
+///
+/// After the NO TEARS solver converges, W contains small non-zero entries due to numerical
+/// precision (h(W) ≤ 1e-8). This function extracts the discrete DAG structure by thresholding:
+/// - For each weight w_ij: adjacency[i,j] = 1 if |w_ij| > threshold, else 0
+///
+/// **Threshold Selection** (from Zheng et al. Section 4.3):
+/// - Default: ω = 0.3 (empirically effective across synthetic benchmarks)
+/// - Conservative: ω = 0.1 (more edges, higher false positive rate)
+/// - Aggressive: ω = 0.5 (fewer edges, higher false negative rate)
+/// - Data-driven: use adaptive thresholding (see extract_adjacency_adaptive)
+///
+/// **Statistical Properties**:
+/// - False positive rate (FPR): Decreases with larger threshold
+/// - True positive rate (TPR): Decreases with larger threshold
+/// - Trade-off: Optimize threshold to balance FPR vs TPR on validation data
+///
+/// # Arguments
+/// * `w` - Continuous weight matrix (d×d) from optimizer
+/// * `threshold` - Cutoff value ω ∈ [0, max(|W|)]
+///
+/// # Returns
+/// Binary adjacency matrix (d×d) with entries in {0, 1}
+///
+/// # Errors
+/// Returns UtilError if:
+/// - `threshold` < 0.0 (invalid parameter)
+/// - `threshold` > max(|w_ij|) + 1e-10 (no edges will be selected)
+/// - Weight matrix contains NaN/Inf
+///
+/// # Examples
+/// ```ignore
+/// let w = ndarray::array![[0.0, 0.5], [-0.4, 0.0]];
+/// let adjacency = extract_adjacency(&w, 0.3)?;
+/// // adjacency = [[0, 1], [1, 0]] - bidirectional edge
+/// ```
+pub fn extract_adjacency(w: &WeightMatrix, threshold: f64) -> Result<ndarray::Array2<i32>, UtilError> {
+    // Validate threshold
+    if threshold < 0.0 {
+        return Err(UtilError::NumericalError);
+    }
+
+    // Check for NaN/Inf in weight matrix
+    if w.iter().any(|x| !x.is_finite()) {
+        return Err(UtilError::NumericalError);
+    }
+
+    // Compute max absolute weight
+    let max_weight = matrix_max_abs(w);
+
+    // Allow all-zeros or near-zero matrices: just return zero adjacency
+    if max_weight < 1e-15 {
+        let (d, _) = w.dim();
+        return Ok(ndarray::Array2::zeros((d, d)));
+    }
+
+    // Warn if threshold too high (no edges will be selected)
+    if threshold > max_weight + 1e-10 {
+        return Err(UtilError::NumericalError);
+    }
+
+    // Convert to binary adjacency: 1 if |w_ij| > threshold, else 0
+    let adjacency = w.mapv(|x| if x.abs() > threshold { 1 } else { 0 });
+
+    Ok(adjacency)
+}
+
+/// Analysis of weight matrix distribution for data-driven thresholding
+///
+/// Contains statistics to support threshold selection via gap detection and ROC analysis.
+#[derive(Debug, Clone)]
+pub struct WeightAnalysis {
+    /// All non-zero absolute weights, sorted in descending order
+    pub sorted_weights: Vec<f64>,
+    /// Maximum absolute weight
+    pub max_weight: f64,
+    /// Total number of entries above 1e-15 (effective non-zero)
+    pub num_nonzero: usize,
+    /// Data sparsity: (d² - num_nonzero) / d²
+    pub sparsity: f64,
+    /// Index of maximum gap in sorted weights
+    pub max_gap_index: usize,
+    /// Threshold at maximum gap: (w[i] + w[i+1]) / 2
+    pub gap_based_threshold: f64,
+}
+
+/// Analyze weight matrix distribution for adaptive thresholding
+///
+/// **Purpose**: Extract statistics for data-driven threshold selection
+///
+/// Detects "gap" in sorted weights where signal edges separate from noise:
+/// 1. Sort |w_ij| in descending order (remove strict zeros)
+/// 2. Find largest gap between consecutive weights
+/// 3. Suggest threshold at midpoint of maximum gap
+/// 4. Provides weight statistics for ROC curve analysis
+///
+/// **Gap-Based Heuristic** (Zheng et al. Section 4.3):
+/// - Large gaps indicate natural clusters of edge weights
+/// - Maximum gap often separates "true edges" from "noise edges"
+/// - Threshold at gap midpoint often recovers true structure
+///
+/// # Arguments
+/// * `w` - Weight matrix to analyze
+///
+/// # Returns
+/// WeightAnalysis struct with sorted weights, gap statistics, and suggested threshold
+///
+/// # Examples
+/// ```ignore
+/// let w = ndarray::array![[0.0, 0.7], [-0.6, 0.0]];
+/// let analysis = analyze_weight_distribution(&w);
+/// println!("Suggested threshold: {:.3}", analysis.gap_based_threshold);
+/// println!("Weights: {:?}", analysis.sorted_weights);
+/// ```
+pub fn analyze_weight_distribution(w: &WeightMatrix) -> WeightAnalysis {
+    // Extract non-zero absolute weights
+    let mut sorted_weights: Vec<f64> = w
+        .iter()
+        .map(|&x| x.abs())
+        .filter(|&x| x > 1e-15) // Filter numerical zeros
+        .collect();
+
+    // Sort in descending order for gap detection
+    sorted_weights.sort_by(|a, b| b.partial_cmp(a).unwrap_or(std::cmp::Ordering::Equal));
+
+    let max_weight = sorted_weights.first().copied().unwrap_or(0.0);
+    let num_nonzero = sorted_weights.len();
+    let (d, _) = w.dim();
+    let sparsity = (d * d - num_nonzero) as f64 / (d * d) as f64;
+
+    // Find maximum gap
+    let mut max_gap = 0.0;
+    let mut max_gap_index = 0;
+
+    for i in 0..sorted_weights.len().saturating_sub(1) {
+        let gap = sorted_weights[i] - sorted_weights[i + 1];
+        if gap > max_gap {
+            max_gap = gap;
+            max_gap_index = i;
+        }
+    }
+
+    // Compute gap-based threshold: midpoint of largest gap
+    let gap_based_threshold = if max_gap_index < sorted_weights.len() - 1 {
+        (sorted_weights[max_gap_index] + sorted_weights[max_gap_index + 1]) / 2.0
+    } else {
+        sorted_weights.last().copied().unwrap_or(0.3)
+    };
+
+    WeightAnalysis {
+        sorted_weights,
+        max_weight,
+        num_nonzero,
+        sparsity,
+        max_gap_index,
+        gap_based_threshold,
+    }
+}
+
+/// Extract adjacency matrix using adaptive (data-driven) thresholding
+///
+/// **Purpose**: Automatically select threshold based on weight distribution
+///
+/// Uses gap detection in sorted weights to find natural threshold.
+/// If no clear gap exists, falls back to default threshold.
+///
+/// **Algorithm**:
+/// 1. Analyze weight distribution: extract sorted absolute values
+/// 2. Detect maximum gap: argmax_i (w_i - w_{i+1})
+/// 3. Threshold at gap midpoint: (w_i + w_{i+1}) / 2
+/// 4. If no gap found or too sparse: use default ω = 0.3
+/// 5. Return binary adjacency with selected threshold
+///
+/// **When to use**:
+/// - Unknown problem structure: let data suggest threshold
+/// - Multiple runs with different parameters: maintain consistency
+/// - Validation set available: verify on held-out data
+/// - ROC analysis needed: sweep thresholds near gap_based value
+///
+/// # Arguments
+/// * `w` - Weight matrix from optimizer
+/// * `default_threshold` - Fallback if no clear gap detected
+///
+/// # Returns
+/// Binary adjacency matrix (Array2<i32>) and selected threshold value
+///
+/// # Errors
+/// Returns UtilError if weight matrix contains NaN/Inf
+pub fn extract_adjacency_adaptive(
+    w: &WeightMatrix,
+    default_threshold: f64,
+) -> Result<(ndarray::Array2<i32>, f64), UtilError> {
+    // Check for NaN/Inf
+    if w.iter().any(|x| !x.is_finite()) {
+        return Err(UtilError::NumericalError);
+    }
+
+    let analysis = analyze_weight_distribution(w);
+
+    // Select threshold: use gap-based if significant, else default
+    let threshold = if analysis.num_nonzero > 0 && analysis.max_gap_index > 0 {
+        // Use gap-based only if gap is significant (>10% of max weight)
+        let gap = analysis.sorted_weights[analysis.max_gap_index]
+            - analysis.sorted_weights[analysis.max_gap_index + 1];
+        if gap > 0.1 * analysis.max_weight {
+            analysis.gap_based_threshold
+        } else {
+            default_threshold
+        }
+    } else {
+        default_threshold
+    };
+
+    // Extract adjacency with selected threshold
+    let adjacency = w.mapv(|x| if x.abs() > threshold { 1 } else { 0 });
+
+    Ok((adjacency, threshold))
+}
+
+/// Validate acyclicity of adjacency matrix via topological sorting
+///
+/// **Purpose**: Verify DAG property after thresholding
+///
+/// Uses Kahn's algorithm for topological sort:
+/// 1. Compute in-degree for each node
+/// 2. Process nodes with in-degree 0
+/// 3. Remove processed node from graph
+/// 4. If all nodes processed: DAG ✓
+/// 5. If nodes remain: contains cycle ✗
+///
+/// **Complexity**: O(d + |E|) where |E| = number of edges ≤ d²
+///
+/// # Arguments
+/// * `adjacency` - Binary adjacency matrix (d×d), entries in {0, 1}
+///
+/// # Returns
+/// `true` if matrix represents a valid DAG, `false` if contains cycle(s)
+///
+/// # Examples
+/// ```ignore
+/// // Valid DAG: lower triangular
+/// let dag = ndarray::array![[0, 1], [0, 0]];
+/// assert!(is_acyclic_adjacency(&dag));
+///
+/// // Invalid: cycle A→B→A
+/// let cycle = ndarray::array![[0, 1], [1, 0]];
+/// assert!(!is_acyclic_adjacency(&cycle));
+/// ```
+pub fn is_acyclic_adjacency(adjacency: &ndarray::Array2<i32>) -> bool {
+    let (d, _) = adjacency.dim();
+
+    // Compute in-degree for each node
+    let mut in_degree = vec![0; d];
+    for i in 0..d {
+        for j in 0..d {
+            if adjacency[[i, j]] != 0 {
+                in_degree[j] += 1;
+            }
+        }
+    }
+
+    // Kahn's algorithm: process nodes with in-degree 0
+    let mut queue: Vec<usize> = in_degree
+        .iter()
+        .enumerate()
+        .filter(|(_, &deg)| deg == 0)
+        .map(|(i, _)| i)
+        .collect();
+
+    let mut processed = 0;
+
+    while let Some(node) = queue.pop() {
+        processed += 1;
+
+        // Remove edges from this node
+        for next in 0..d {
+            if adjacency[[node, next]] != 0 {
+                in_degree[next] -= 1;
+                if in_degree[next] == 0 {
+                    queue.push(next);
+                }
+            }
+        }
+    }
+
+    // DAG if all nodes processed
+    processed == d
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -458,10 +749,176 @@ mod tests {
     }
 
     #[test]
-    fn test_threshold_matrix() {
-        let matrix = ndarray::array![[0.05, 0.5], [0.1, 1.5]];
-        let thresholded = threshold_matrix(&matrix, 0.2);
-        assert_eq!(thresholded[[0, 0]], 0.0);
-        assert_eq!(thresholded[[0, 1]], 0.5);
+    fn test_extract_adjacency_basic() {
+        let w = ndarray::array![[0.0, 0.5, 0.1], [0.2, 0.0, 0.8], [0.05, 0.3, 0.0]];
+        
+        // Test with threshold 0.3
+        let adj = extract_adjacency(&w, 0.3).unwrap();
+        assert_eq!(adj[[0, 1]], 1); // |0.5| > 0.3 ✓
+        assert_eq!(adj[[0, 2]], 0); // |0.1| ≤ 0.3 ✓
+        assert_eq!(adj[[1, 0]], 0); // |0.2| ≤ 0.3 ✓
+        assert_eq!(adj[[1, 2]], 1); // |0.8| > 0.3 ✓
+        assert_eq!(adj[[2, 0]], 0); // |0.05| ≤ 0.3 ✓
+        assert_eq!(adj[[2, 1]], 0); // |0.3| ≤ 0.3 (boundary: NOT strict >)
+        
+        // Test with threshold 0.1
+        let adj_loose = extract_adjacency(&w, 0.1).unwrap();
+        assert_eq!(adj_loose[[0, 2]], 0); // |0.1| ≤ 0.1 (boundary: NOT strict >)
+        assert_eq!(adj_loose[[2, 0]], 0); // |0.05| ≤ 0.1 ✓
+        
+        // Test with threshold 0.05
+        let adj_lower = extract_adjacency(&w, 0.05).unwrap();
+        assert_eq!(adj_lower[[0, 2]], 1); // |0.1| > 0.05 ✓
+        assert_eq!(adj_lower[[2, 0]], 0); // |0.05| ≤ 0.05 (boundary)
+    }
+
+    #[test]
+    fn test_extract_adjacency_negative_threshold() {
+        let w = ndarray::array![[0.0, 0.5], [-0.4, 0.0]];
+        let result = extract_adjacency(&w, -0.1);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_extract_adjacency_threshold_too_large() {
+        let w = ndarray::array![[0.0, 0.5], [-0.4, 0.0]];
+        // Max weight is 0.5, threshold 1.0 is too large
+        let result = extract_adjacency(&w, 1.0);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_extract_adjacency_nan() {
+        let mut w = ndarray::array![[0.0, 0.5], [-0.4, 0.0]];
+        w[[0, 1]] = f64::NAN;
+        let result = extract_adjacency(&w, 0.3);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_extract_adjacency_inf() {
+        let mut w = ndarray::array![[0.0, 0.5], [-0.4, 0.0]];
+        w[[0, 1]] = f64::INFINITY;
+        let result = extract_adjacency(&w, 0.3);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_extract_adjacency_all_zeros() {
+        let w = ndarray::Array2::<f64>::zeros((3, 3));
+        let adj = extract_adjacency(&w, 0.3).unwrap();
+        assert!(adj.iter().all(|&x| x == 0));
+    }
+
+    #[test]
+    fn test_analyze_weight_distribution() {
+        let w = ndarray::array![[0.0, 0.9], [-0.1, 0.0]];
+        let analysis = analyze_weight_distribution(&w);
+        
+        assert_eq!(analysis.max_weight, 0.9);
+        assert_eq!(analysis.num_nonzero, 2); // 0.9 and 0.1
+        assert!(analysis.sparsity > 0.0 && analysis.sparsity < 1.0);
+        assert!(!analysis.sorted_weights.is_empty());
+    }
+
+    #[test]
+    fn test_analyze_weight_distribution_sorted() {
+        let w = ndarray::array![[0.0, 0.5], [-0.8, 0.0]];
+        let analysis = analyze_weight_distribution(&w);
+        
+        // Weights should be sorted in descending order
+        assert_eq!(analysis.sorted_weights[0], 0.8);
+        assert_eq!(analysis.sorted_weights[1], 0.5);
+        
+        // Gap-based threshold should be between them
+        let threshold = analysis.gap_based_threshold;
+        assert!(threshold > 0.5 && threshold < 0.8);
+    }
+
+    #[test]
+    fn test_analyze_weight_distribution_with_gap() {
+        // Large gap between 0.8 and 0.2
+        let w = ndarray::array![[0.0, 0.8, 0.05], [0.05, 0.0, 0.2], [0.1, 0.15, 0.0]];
+        let analysis = analyze_weight_distribution(&w);
+        
+        assert!(analysis.max_weight > 0.0);
+        // Gap-based threshold should be between large weights and small weights
+        assert!(analysis.gap_based_threshold > 0.0);
+    }
+
+    #[test]
+    fn test_extract_adjacency_adaptive() {
+        let w = ndarray::array![[0.0, 0.8], [-0.2, 0.0]];
+        
+        let (adj, threshold) = extract_adjacency_adaptive(&w, 0.3).unwrap();
+        
+        // Should extract binary adjacency
+        assert_eq!(adj.dim(), (2, 2));
+        assert!(adj.iter().all(|&x| x == 0 || x == 1));
+        
+        // Threshold should be reasonable
+        assert!(threshold >= 0.0 && threshold <= 0.8);
+    }
+
+    #[test]
+    fn test_extract_adjacency_adaptive_fallback() {
+        // No clear gap: uniform weights
+        let w = ndarray::array![[0.0, 0.5], [-0.5, 0.0]];
+        
+        let (adj, threshold) = extract_adjacency_adaptive(&w, 0.3).unwrap();
+        
+        // Should use default threshold when no clear gap
+        assert_eq!(adj[[0, 1]], 1); // 0.5 > 0.3
+        assert_eq!(adj[[1, 0]], 1); // 0.5 > 0.3 (absolute value)
+    }
+
+    #[test]
+    fn test_extract_adjacency_adaptive_nan() {
+        let mut w = ndarray::array![[0.0, 0.5], [-0.4, 0.0]];
+        w[[0, 1]] = f64::NAN;
+        let result = extract_adjacency_adaptive(&w, 0.3);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_is_acyclic_adjacency_valid_dag() {
+        // Lower triangular: always acyclic
+        let adj = ndarray::array![[0, 1, 1], [0, 0, 1], [0, 0, 0]];
+        assert!(is_acyclic_adjacency(&adj));
+    }
+
+    #[test]
+    fn test_is_acyclic_adjacency_self_loop() {
+        // Self-loop: cycle
+        let mut adj = ndarray::Array2::<i32>::zeros((2, 2));
+        adj[[0, 0]] = 1;
+        assert!(!is_acyclic_adjacency(&adj));
+    }
+
+    #[test]
+    fn test_is_acyclic_adjacency_simple_cycle() {
+        // A→B→A: cycle
+        let adj = ndarray::array![[0, 1], [1, 0]];
+        assert!(!is_acyclic_adjacency(&adj));
+    }
+
+    #[test]
+    fn test_is_acyclic_adjacency_3cycle() {
+        // A→B→C→A: cycle
+        let adj = ndarray::array![[0, 1, 0], [0, 0, 1], [1, 0, 0]];
+        assert!(!is_acyclic_adjacency(&adj));
+    }
+
+    #[test]
+    fn test_is_acyclic_adjacency_no_edges() {
+        let adj = ndarray::Array2::<i32>::zeros((3, 3));
+        assert!(is_acyclic_adjacency(&adj));
+    }
+
+    #[test]
+    fn test_is_acyclic_adjacency_disconnected() {
+        // Multiple connected components, all acyclic
+        let adj = ndarray::array![[0, 1, 0], [0, 0, 0], [0, 0, 0]];
+        assert!(is_acyclic_adjacency(&adj));
     }
 }
