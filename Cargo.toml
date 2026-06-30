@@ -1,0 +1,39 @@
+[package]
+name = "notears"
+version = "0.1.0"
+edition = "2021"
+authors = ["NOTEARS Contributors"]
+description = "Production-grade Rust implementation of the NO TEARS algorithm for DAG structure learning"
+repository = "https://github.com/pristley/notears"
+license = "MIT"
+keywords = ["dag", "structure-learning", "causal-inference", "optimization"]
+categories = ["algorithms", "science"]
+
+[dependencies]
+ndarray = { version = "0.15", features = ["serde"] }
+nalgebra = { version = "0.33", features = ["std"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+rayon = "1.7"
+thiserror = "1.0"
+
+[dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
+rand = "0.8"
+approx = "0.5"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+
+[profile.dev]
+opt-level = 0
+
+[[bench]]
+name = "notears_benchmarks"
+harness = false
+
+[lib]
+name = "notears"
+path = "src/lib.rs"
