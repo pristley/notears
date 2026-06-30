@@ -1,0 +1,2 @@
+AbsDiff<ArrayBase<OwnedRepr<f64>, Dim<[usize; 2]>>, _>
+ArrayBase<OwnedRepr<f64>, Dim<[usize; 2]>>: AbsDiffEq<_>
