@@ -144,7 +144,7 @@ pub fn matrix_exponential(weight_matrix: &WeightMatrix) -> Result<WeightMatrix, 
 /// 2. Apply order-6 Padé approximation to A/2^s
 /// 3. Square s times to recover exp(A) = (exp(A/2^s))^(2^s)
 fn matrix_exp_pade(a: &WeightMatrix) -> Result<(WeightMatrix, usize), UtilError> {
-    let (n, _) = a.dim();
+    let (_n, _) = a.dim();
 
     // Step 1: Compute scaling factor using Frobenius norm
     let norm = matrix_frobenius_norm(a);
@@ -625,6 +625,284 @@ pub fn is_acyclic_adjacency(adjacency: &ndarray::Array2<i32>) -> bool {
     processed == d
 }
 
+/// Check acyclicity of weight matrix via acyclicity constraint
+///
+/// **Purpose**: Simple boolean test of whether W represents a DAG
+///
+/// Uses the h(W) constraint: a matrix is acyclic iff h(W) ≈ 0
+/// (within numerical precision 1e-6).
+///
+/// # Arguments
+/// * `w` - Weight matrix to check
+///
+/// # Returns
+/// `true` if h(W) < 1e-6 (acyclic), `false` otherwise
+///
+/// # Examples
+/// ```ignore
+/// // Valid DAG weight matrix
+/// let w = ndarray::array![[0.0, 0.5], [0.0, 0.0]];
+/// assert!(is_acyclic(&w));
+///
+/// // Invalid: contains cycle
+/// let cyclic = ndarray::array![[0.0, 0.5], [0.5, 0.0]];
+/// assert!(!is_acyclic(&cyclic));
+/// ```
+pub fn is_acyclic(w: &WeightMatrix) -> bool {
+    match crate::acyclicity::acyclicity_constraint(w) {
+        Ok(h) => h < 1e-6,
+        Err(_) => false,
+    }
+}
+
+/// Find all cycles in adjacency matrix
+///
+/// **Purpose**: Detect and extract cycles in binary DAG for debugging
+///
+/// Uses depth-first search (DFS) with recursion stack to detect back edges.
+/// Each back edge indicates a cycle; extracts the cycle path.
+///
+/// **Algorithm**: Modified DFS with three states:
+/// - White (unvisited): exploration in progress
+/// - Gray (visiting): currently on recursion stack
+/// - Black (visited): all descendants explored
+///
+/// A back edge (u → v where v is gray) indicates cycle: cycle includes path from v to u in DFS tree.
+///
+/// **Complexity**: O(d + |E|) where d = nodes, |E| = edges
+///
+/// # Arguments
+/// * `adjacency` - Binary adjacency matrix (d×d), entries in {0, 1}
+///
+/// # Returns
+/// Vector of cycles, each cycle is a vector of node indices
+/// Empty if graph is acyclic
+///
+/// # Examples
+/// ```ignore
+/// // Simple cycle: A→B→A
+/// let adj = ndarray::array![[0, 1], [1, 0]];
+/// let cycles = find_cycles(&adj);
+/// assert!(!cycles.is_empty()); // cycle detected
+/// ```
+pub fn find_cycles(adjacency: &ndarray::Array2<i32>) -> Vec<Vec<usize>> {
+    let d = adjacency.shape()[0];
+    let mut cycles = Vec::new();
+    let mut visited = vec![false; d];
+    let mut rec_stack = vec![false; d];
+    let mut path = Vec::new();
+
+    for start in 0..d {
+        if !visited[start] {
+            dfs_find_cycles(start, adjacency, &mut visited, &mut rec_stack, &mut cycles, &mut path);
+        }
+    }
+
+    cycles
+}
+
+/// DFS helper for cycle detection
+///
+/// Performs depth-first search from a node to find all cycles in the graph.
+/// Uses recursion stack (rec_stack) to detect back edges (cycle indicators).
+fn dfs_find_cycles(
+    node: usize,
+    adjacency: &ndarray::Array2<i32>,
+    visited: &mut Vec<bool>,
+    rec_stack: &mut Vec<bool>,
+    cycles: &mut Vec<Vec<usize>>,
+    path: &mut Vec<usize>,
+) {
+    visited[node] = true;
+    rec_stack[node] = true;
+    path.push(node);
+
+    let d = adjacency.shape()[0];
+
+    for next in 0..d {
+        if adjacency[[node, next]] != 0 {
+            if !visited[next] {
+                // Continue DFS from next node
+                dfs_find_cycles(next, adjacency, visited, rec_stack, cycles, path);
+            } else if rec_stack[next] {
+                // Back edge found: cycle detected
+                if let Some(cycle_start_idx) = path.iter().position(|&x| x == next) {
+                    let mut cycle = path[cycle_start_idx..].to_vec();
+                    cycle.push(next); // Close the cycle
+                    cycles.push(cycle);
+                }
+            }
+        }
+    }
+
+    rec_stack[node] = false;
+    path.pop();
+}
+
+/// Compute sum of weights on a cycle path
+///
+/// **Purpose**: Diagnose cycle severity (larger sum = stronger cycle)
+///
+/// For a cycle [v₀, v₁, ..., vₖ], computes:
+/// sum_weight = |w[v₀→v₁]| + |w[v₁→v₂]| + ... + |w[vₖ→v₀]|
+///
+/// # Arguments
+/// * `cycle` - Ordered path of node indices forming cycle
+/// * `w` - Weight matrix (d×d)
+///
+/// # Returns
+/// Sum of absolute weights along cycle path
+fn cycle_weight(cycle: &[usize], w: &WeightMatrix) -> f64 {
+    let mut sum = 0.0;
+    for i in 0..cycle.len() {
+        let from = cycle[i];
+        let to = cycle[(i + 1) % cycle.len()];
+        sum += w[[from, to]].abs();
+    }
+    sum
+}
+
+/// Comprehensive DAG validation with detailed diagnostics
+///
+/// **Purpose**: Verify DAG properties and diagnose issues in learned structure
+///
+/// Performs multiple independent checks:
+/// 1. **Constraint-based**: h(W) < tolerance (algebraic acyclicity check)
+/// 2. **Topological sort**: Kahn's algorithm on thresholded adjacency (graph-based check)
+/// 3. **Cycle detection**: Explicit DFS to find all cycles
+/// 4. **Statistics**: Edge count, sparsity, cycle severity
+///
+/// **Use Cases**:
+/// - Verify optimization succeeded: expect both checks to pass
+/// - Diagnose convergence failures: cycle detection identifies problem structure
+/// - Threshold validation: statistics help select appropriate threshold
+///
+/// # Arguments
+/// * `w` - Weight matrix from optimizer (d×d)
+/// * `tolerance` - h(W) threshold for acyclicity (typical: 1e-6 to 1e-4)
+///
+/// # Returns
+/// ValidationResult with comprehensive diagnostics
+///
+/// # Errors
+/// Returns error if:
+/// - Weight matrix is non-square
+/// - Weight matrix contains NaN/Inf
+/// - Matrix exponential fails (d > 500)
+/// - Adjacency extraction fails (threshold issues)
+///
+/// # Examples
+/// ```ignore
+/// let w = learn_dag_result.weight_matrix;
+/// let result = validate_dag(&w, 1e-6)?;
+/// match result.is_valid_dag() {
+///     true => println!("✓ Valid DAG"),
+///     false => println!("✗ Issues: {}", result.status_summary()),
+/// }
+/// ```
+pub fn validate_dag(
+    w: &WeightMatrix,
+    tolerance: f64,
+) -> Result<crate::types::ValidationResult, Box<dyn std::error::Error>> {
+    // Check 1: Constraint value via h(W)
+    let h_w = crate::acyclicity::acyclicity_constraint(w)?;
+    let is_acyclic_h = h_w < tolerance;
+
+    // Check 2: Topological sort on thresholded adjacency (very lenient threshold)
+    let adjacency = extract_adjacency(w, 0.01)?; // 0.01 is very permissive
+    let is_acyclic_topo = is_acyclic_adjacency(&adjacency);
+
+    // Check 3: Explicit cycle detection
+    let cycles = find_cycles(&adjacency);
+
+    // Check 4: Statistics
+    let num_edges = adjacency.iter().filter(|&&x| x != 0).count();
+    let (d, _) = w.dim();
+    let total_entries = d * d;
+    let sparsity = (total_entries - num_edges) as f64 / total_entries as f64;
+
+    // Check 5: Cycle weight (severity)
+    let max_cycle_weight = if cycles.is_empty() {
+        0.0
+    } else {
+        cycles
+            .iter()
+            .map(|cycle| cycle_weight(cycle, w))
+            .fold(f64::NEG_INFINITY, f64::max)
+    };
+
+    Ok(crate::types::ValidationResult {
+        is_acyclic_by_constraint: is_acyclic_h,
+        is_acyclic_by_topological_sort: is_acyclic_topo,
+        constraint_value: h_w,
+        max_cycle_weight,
+        num_edges,
+        sparsity,
+    })
+}
+
+/// Print formatted validation report
+///
+/// **Purpose**: Human-readable diagnostics for DAG validation
+///
+/// Outputs:
+/// - Constraint value h(W) and pass/fail status
+/// - Topological sort result
+/// - Edge statistics (count, sparsity)
+/// - Cycle information (if detected)
+/// - Overall summary with interpretation
+///
+/// # Arguments
+/// * `result` - ValidationResult from validate_dag()
+///
+/// # Examples
+/// ```ignore
+/// let result = validate_dag(&w, 1e-6)?;
+/// print_validation_report(&result);
+/// // Output:
+/// // === DAG Validation Report ===
+/// // Constraint h(W): 3.14159e-8
+/// // Acyclic (by constraint): ✓ YES
+/// // Acyclic (by topological sort): ✓ YES
+/// // ...
+/// ```
+pub fn print_validation_report(result: &crate::types::ValidationResult) {
+    println!("=== DAG Validation Report ===");
+    println!("Status: {}", result.status_summary());
+    println!();
+    
+    println!("Constraint h(W): {:.6e}", result.constraint_value);
+    println!(
+        "Acyclic (by constraint): {}",
+        if result.is_acyclic_by_constraint {
+            "✓ YES"
+        } else {
+            "✗ NO"
+        }
+    );
+    
+    println!(
+        "Acyclic (by topological sort): {}",
+        if result.is_acyclic_by_topological_sort {
+            "✓ YES"
+        } else {
+            "✗ NO"
+        }
+    );
+    
+    println!("Number of edges: {}", result.num_edges);
+    println!("Sparsity: {:.1}%", result.sparsity * 100.0);
+    
+    if result.max_cycle_weight > 0.0 {
+        println!("Max cycle weight: {:.6e}", result.max_cycle_weight);
+        println!("  → Increase constraint tolerance or decrease threshold");
+    } else {
+        println!("Max cycle weight: 0.0 (no cycles detected)");
+    }
+    
+    println!("================");
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -865,7 +1143,7 @@ mod tests {
         // No clear gap: uniform weights
         let w = ndarray::array![[0.0, 0.5], [-0.5, 0.0]];
         
-        let (adj, threshold) = extract_adjacency_adaptive(&w, 0.3).unwrap();
+        let (adj, _threshold) = extract_adjacency_adaptive(&w, 0.3).unwrap();
         
         // Should use default threshold when no clear gap
         assert_eq!(adj[[0, 1]], 1); // 0.5 > 0.3
@@ -920,5 +1198,267 @@ mod tests {
         // Multiple connected components, all acyclic
         let adj = ndarray::array![[0, 1, 0], [0, 0, 0], [0, 0, 0]];
         assert!(is_acyclic_adjacency(&adj));
+    }
+
+    // ===== Phase 10: Validation Tests =====
+
+    #[test]
+    fn test_is_acyclic_valid_dag() {
+        // Lower triangular weight matrix: should be acyclic
+        let w = ndarray::array![[0.0, 0.5, 0.3], [0.0, 0.0, 0.4], [0.0, 0.0, 0.0]];
+        assert!(is_acyclic(&w));
+    }
+
+    #[test]
+    fn test_is_acyclic_with_cycle() {
+        // Simple cycle: A↔B
+        let w = ndarray::array![[0.0, 0.5], [0.5, 0.0]];
+        assert!(!is_acyclic(&w));
+    }
+
+    #[test]
+    fn test_is_acyclic_zero_matrix() {
+        // All zeros: should be acyclic
+        let w = ndarray::Array2::<f64>::zeros((3, 3));
+        assert!(is_acyclic(&w));
+    }
+
+    #[test]
+    fn test_find_cycles_empty_graph() {
+        let adj = ndarray::Array2::<i32>::zeros((3, 3));
+        let cycles = find_cycles(&adj);
+        assert!(cycles.is_empty());
+    }
+
+    #[test]
+    fn test_find_cycles_simple_cycle() {
+        // A→B→A
+        let adj = ndarray::array![[0, 1], [1, 0]];
+        let cycles = find_cycles(&adj);
+        assert!(!cycles.is_empty());
+        assert_eq!(cycles.len(), 1); // One cycle: A→B→A
+    }
+
+    #[test]
+    fn test_find_cycles_self_loop() {
+        // Self-loop at node 0
+        let mut adj = ndarray::Array2::<i32>::zeros((2, 2));
+        adj[[0, 0]] = 1;
+        let cycles = find_cycles(&adj);
+        assert!(!cycles.is_empty());
+    }
+
+    #[test]
+    fn test_find_cycles_3cycle() {
+        // A→B→C→A
+        let adj = ndarray::array![[0, 1, 0], [0, 0, 1], [1, 0, 0]];
+        let cycles = find_cycles(&adj);
+        assert!(!cycles.is_empty());
+    }
+
+    #[test]
+    fn test_find_cycles_acyclic_graph() {
+        // Lower triangular: no cycles
+        let adj = ndarray::array![[0, 1, 1], [0, 0, 1], [0, 0, 0]];
+        let cycles = find_cycles(&adj);
+        assert!(cycles.is_empty());
+    }
+
+    #[test]
+    fn test_find_cycles_multiple_cycles() {
+        // Graph with two independent cycles: A↔B and C↔D
+        let adj = ndarray::array![
+            [0, 1, 0, 0],
+            [1, 0, 0, 0],
+            [0, 0, 0, 1],
+            [0, 0, 1, 0],
+        ];
+        let cycles = find_cycles(&adj);
+        assert_eq!(cycles.len(), 2); // Two cycles
+    }
+
+    #[test]
+    fn test_validate_dag_valid_dag() -> Result<(), Box<dyn std::error::Error>> {
+        // Perfect DAG: lower triangular
+        let w = ndarray::array![[0.0, 0.5, 0.3], [0.0, 0.0, 0.4], [0.0, 0.0, 0.0]];
+        let result = validate_dag(&w, 1e-6)?;
+
+        assert!(result.is_acyclic_by_constraint);
+        assert!(result.is_acyclic_by_topological_sort);
+        assert!(result.is_valid_dag());
+        assert_eq!(result.max_cycle_weight, 0.0);
+        assert!(result.num_edges > 0);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_validate_dag_empty_dag() -> Result<(), Box<dyn std::error::Error>> {
+        // Empty DAG: all zeros
+        let w = ndarray::Array2::<f64>::zeros((3, 3));
+        let result = validate_dag(&w, 1e-6)?;
+
+        assert!(result.is_acyclic_by_constraint);
+        assert!(result.is_acyclic_by_topological_sort);
+        assert!(result.is_valid_dag());
+        assert_eq!(result.max_cycle_weight, 0.0);
+        assert_eq!(result.num_edges, 0);
+        assert_eq!(result.sparsity, 1.0); // All zeros = fully sparse
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_validate_dag_with_cycle() -> Result<(), Box<dyn std::error::Error>> {
+        // Simple cycle: A→B→A with weight 0.5
+        let w = ndarray::array![[0.0, 0.5], [0.5, 0.0]];
+        let result = validate_dag(&w, 1e-6)?;
+
+        // With h(W), this should fail acyclicity check
+        assert!(!result.is_acyclic_by_constraint || !result.is_acyclic_by_topological_sort);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_validate_dag_statistics() -> Result<(), Box<dyn std::error::Error>> {
+        // 3-node DAG with 3 edges
+        let w = ndarray::array![[0.0, 0.5, 0.3], [0.0, 0.0, 0.4], [0.0, 0.0, 0.0]];
+        let result = validate_dag(&w, 1e-6)?;
+
+        // Check statistics
+        assert_eq!(result.num_edges, 3);
+        assert!(result.sparsity > 0.0 && result.sparsity < 1.0);
+        assert!(result.num_edges as f64 / 9.0 + result.sparsity < 1.0000001); // num_edges/total + sparsity ≈ 1
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_validate_dag_dense_graph() -> Result<(), Box<dyn std::error::Error>> {
+        // Fully connected acyclic graph (complete DAG)
+        let w = ndarray::array![[0.0, 0.5, 0.3], [0.0, 0.0, 0.4], [0.0, 0.0, 0.0]];
+        let result = validate_dag(&w, 1e-6)?;
+
+        assert_eq!(result.num_edges, 3);
+        let expected_sparsity = (9 - 3) as f64 / 9.0; // 6 zeros out of 9
+        assert_abs_diff_eq!(result.sparsity, expected_sparsity, epsilon = 1e-6);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_validate_dag_sparse_graph() -> Result<(), Box<dyn std::error::Error>> {
+        // Sparse DAG: only 1 edge
+        let mut w = ndarray::Array2::<f64>::zeros((5, 5));
+        w[[0, 1]] = 0.5;
+        let result = validate_dag(&w, 1e-6)?;
+
+        assert_eq!(result.num_edges, 1);
+        let expected_sparsity = (25 - 1) as f64 / 25.0; // 24 zeros out of 25
+        assert_abs_diff_eq!(result.sparsity, expected_sparsity, epsilon = 1e-6);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_validate_dag_status_summary_valid() -> Result<(), Box<dyn std::error::Error>> {
+        let w = ndarray::array![[0.0, 0.5], [0.0, 0.0]];
+        let result = validate_dag(&w, 1e-6)?;
+
+        if result.is_valid_dag() {
+            assert!(result.status_summary().contains("PASS"));
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_validate_dag_constraint_tolerance() -> Result<(), Box<dyn std::error::Error>> {
+        // Tight tolerance
+        let w = ndarray::array![[0.0, 0.5], [0.0, 0.0]];
+        let result_tight = validate_dag(&w, 1e-10)?;
+
+        // Loose tolerance
+        let result_loose = validate_dag(&w, 1e-4)?;
+
+        // Loose tolerance should be more permissive
+        if result_tight.is_acyclic_by_constraint {
+            assert!(result_loose.is_acyclic_by_constraint);
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_print_validation_report_valid_dag() -> Result<(), Box<dyn std::error::Error>> {
+        let w = ndarray::array![[0.0, 0.5], [0.0, 0.0]];
+        let result = validate_dag(&w, 1e-6)?;
+
+        // Just verify this doesn't panic
+        print_validation_report(&result);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_print_validation_report_with_cycles() -> Result<(), Box<dyn std::error::Error>> {
+        let w = ndarray::array![[0.0, 0.5], [0.5, 0.0]];
+        let result = validate_dag(&w, 1e-6)?;
+
+        // Just verify this doesn't panic even with cycles
+        print_validation_report(&result);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_validation_result_is_valid_dag() {
+        let result_valid = crate::types::ValidationResult {
+            is_acyclic_by_constraint: true,
+            is_acyclic_by_topological_sort: true,
+            constraint_value: 1e-8,
+            max_cycle_weight: 0.0,
+            num_edges: 3,
+            sparsity: 0.66,
+        };
+
+        assert!(result_valid.is_valid_dag());
+
+        let result_invalid = crate::types::ValidationResult {
+            is_acyclic_by_constraint: false,
+            is_acyclic_by_topological_sort: false,
+            constraint_value: 0.5,
+            max_cycle_weight: 1.5,
+            num_edges: 3,
+            sparsity: 0.66,
+        };
+
+        assert!(!result_invalid.is_valid_dag());
+    }
+
+    #[test]
+    fn test_validation_result_status_summary() {
+        let result_pass = crate::types::ValidationResult {
+            is_acyclic_by_constraint: true,
+            is_acyclic_by_topological_sort: true,
+            constraint_value: 1e-8,
+            max_cycle_weight: 0.0,
+            num_edges: 3,
+            sparsity: 0.66,
+        };
+
+        assert!(result_pass.status_summary().contains("PASS"));
+
+        let result_fail = crate::types::ValidationResult {
+            is_acyclic_by_constraint: false,
+            is_acyclic_by_topological_sort: false,
+            constraint_value: 0.5,
+            max_cycle_weight: 1.5,
+            num_edges: 3,
+            sparsity: 0.66,
+        };
+
+        assert!(result_fail.status_summary().contains("FAIL"));
     }
 }

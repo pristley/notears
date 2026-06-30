@@ -257,6 +257,62 @@ impl OptimizationResult {
     }
 }
 
+/// Comprehensive validation result for DAG verification
+///
+/// Contains detailed diagnostics to verify DAG properties and debug issues.
+/// Includes both constraint-based (h(W)) and graph-based (topological sort) acyclicity checks.
+///
+/// # Fields
+/// * `is_acyclic_by_constraint` - h(W) < tolerance (optimization succeeded)
+/// * `is_acyclic_by_topological_sort` - No cycles in binary adjacency (graph is DAG)
+/// * `constraint_value` - Actual h(W) value (0 = perfectly acyclic)
+/// * `max_cycle_weight` - Sum of weights on longest cycle (0 if no cycles)
+/// * `num_edges` - Number of non-zero entries in adjacency matrix
+/// * `sparsity` - Fraction of zero entries: (d² - edges) / d²
+///
+/// # Interpretation
+/// - Both flags true: Graph is definitely a valid DAG ✓
+/// - Constraint true, topo false: Numerical artifact; likely valid
+/// - Constraint false, topo true: Solver didn't converge but structure is acyclic
+/// - Both false: Serious issue; graph contains cycles
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ValidationResult {
+    /// Acyclicity check via h(W) < tolerance
+    pub is_acyclic_by_constraint: bool,
+    /// Acyclicity check via topological sort (Kahn's algorithm)
+    pub is_acyclic_by_topological_sort: bool,
+    /// Constraint value h(W): should be ~0 for acyclic
+    pub constraint_value: f64,
+    /// Sum of weights on longest cycle: 0 if DAG
+    pub max_cycle_weight: f64,
+    /// Number of edges (non-zero adjacency entries)
+    pub num_edges: usize,
+    /// Sparsity ratio: fraction of zeros
+    pub sparsity: f64,
+}
+
+impl ValidationResult {
+    /// Check if validation passed all criteria
+    ///
+    /// Returns true only if both constraint and topological sort confirm acyclicity
+    pub fn is_valid_dag(&self) -> bool {
+        self.is_acyclic_by_constraint && self.is_acyclic_by_topological_sort
+    }
+
+    /// Summary status: PASS if valid DAG, diagnostic message if not
+    pub fn status_summary(&self) -> String {
+        if self.is_valid_dag() {
+            "✓ PASS: Valid DAG structure".to_string()
+        } else if !self.is_acyclic_by_constraint && !self.is_acyclic_by_topological_sort {
+            format!("✗ FAIL: Cycles detected; h(W) = {:.2e}", self.constraint_value)
+        } else if !self.is_acyclic_by_constraint {
+            format!("⚠ WARN: h(W) > tolerance ({:.2e}); but no cycles detected", self.constraint_value)
+        } else {
+            format!("⚠ WARN: Topological sort detected cycles; h(W) = {:.2e}", self.constraint_value)
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

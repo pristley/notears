@@ -67,11 +67,16 @@ pub mod utils;
 
 // Re-export main public API
 pub use optimization::{solve, solve_with_config, NotearsSolver, OptimizationError, solve_ecp};
-pub use types::{OptimizationResult, OptimizationConfig, RegularizationConfig, ConfigError};
+pub use types::{
+    OptimizationResult, OptimizationConfig, RegularizationConfig, ConfigError, ValidationResult,
+};
 pub use types::{WeightMatrix, DataMatrix, GradientMatrix};
 pub use scoring::{mse_loss, l1_penalty, total_loss};
 pub use acyclicity::{acyclicity_constraint, acyclicity_gradient, is_dag};
-pub use utils::{standardize_data, matrix_exponential, frobenius_norm, extract_adjacency, is_acyclic_adjacency};
+pub use utils::{
+    standardize_data, matrix_exponential, frobenius_norm, extract_adjacency, is_acyclic_adjacency,
+    is_acyclic, validate_dag, find_cycles, print_validation_report,
+};
 
 
 // Library version
