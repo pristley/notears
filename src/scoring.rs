@@ -289,6 +289,93 @@ pub fn total_loss_gradient(
     Ok(grad_mse + reg_config.lambda * grad_l1)
 }
 
+/// Compute analytical gradient of smooth scoring function: ∇F(W) = ∇ℓ(W; X) + λ·∇||W||₁
+///
+/// The gradient combines:
+/// 1. **Gradient of least-squares loss**: ∇ℓ(W; X) = -(1/n) X^T @ (X - XW)
+///    - Residual form: R = X - XW
+///    - Gradient: -(1/n) X^T @ R
+/// 2. **Subgradient of L₁ regularization**: λ·sign(W)
+///    - Element-wise sign: sign(w) = {+1 if w>0, -1 if w<0, 0 if w=0}
+///    - Scaled by regularization strength λ
+///
+/// Mathematical derivation:
+/// - ∂ℓ/∂W = ∂/∂W [(1/(2n)) ||X - XW||²_F]
+///         = (1/(2n)) * 2 * (X - XW)^T * (-X)
+///         = -(1/n) * X^T @ (X - XW)
+/// - ∂||W||₁/∂W = sign(W) (element-wise subdifferential)
+///
+/// Optimization integration:
+/// - Suitable for proximal L-BFGS (handles non-smooth L₁ term)
+/// - Can alternatively smooth L₁: ||W||₁ ≈ √(W² + ε)
+/// - Recommended: Proximal operator for true L₁ term
+///
+/// # Arguments
+/// * `w` - Weight matrix W (d×d)
+/// * `data` - Data matrix X (n×d) with n samples
+/// * `config` - RegularizationConfig with lambda ≥ 0.0
+///
+/// # Returns
+/// Gradient matrix ∇F(W) with same shape as W
+///
+/// # Errors
+/// Returns ScoringError if dimensions mismatch or data is empty
+///
+/// # Performance Notes
+/// - Dominated by matrix multiply X^T @ R: O(n·d²)
+/// - Comparable to loss evaluation cost
+/// - Consider caching X^T if gradient called repeatedly
+///
+/// # Mathematical Properties
+/// - Gradient descent direction: W_new = W_old - α·∇F(W)
+/// - Negative gradient decreases loss (with small enough step size α)
+/// - Sign function creates non-smoothness at w=0 (handled by proximal methods)
+pub fn score_gradient(
+    w: &WeightMatrix,
+    data: &DataMatrix,
+    config: &RegularizationConfig,
+) -> Result<WeightMatrix, ScoringError> {
+    let (n, d) = data.dim();
+    let (w_rows, w_cols) = w.dim();
+
+    // Input validation
+    if d != w_rows || w_rows != w_cols {
+        return Err(ScoringError::DimensionMismatch {
+            data_vars: d,
+            weight_dim: w_rows,
+        });
+    }
+
+    if n == 0 {
+        return Err(ScoringError::EmptyData);
+    }
+
+    if w_cols == 0 {
+        return Err(ScoringError::NonSquareWeight);
+    }
+
+    // **Component 1: Gradient of LS loss ∇ℓ(W; X) = -(1/n) X^T @ (X - XW)**
+    
+    // Step 1: Compute residual R = X - X @ W
+    let xw = data.dot(w);
+    let residuals = data - &xw;
+
+    // Step 2: Compute X^T (non-owning transpose view)
+    let data_t = data.t();
+
+    // Step 3: Compute gradient: -(1/n) * X^T @ R
+    let grad_ls = data_t.dot(&residuals) * (-1.0 / n as f64);
+
+    // **Component 2: Subgradient of L₁ regularization λ·sign(W)**
+    let grad_l1 = l1_gradient(w);
+    let scaled_grad_l1 = &grad_l1 * config.lambda;
+
+    // **Combined gradient: ∇F(W) = ∇ℓ + λ·∇||W||₁**
+    let gradient = grad_ls + &scaled_grad_l1;
+
+    Ok(gradient)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -398,5 +485,157 @@ mod tests {
         let config_reg = RegularizationConfig::new(0.5, false).unwrap();
         let score_with_reg = score_function(&weights, &data, &config_reg).unwrap();
         assert!(score_with_reg > score_no_reg); // Regularization adds to score
+    }
+
+    // ========== Score Gradient Tests ==========
+
+    #[test]
+    fn test_score_gradient_zero_weights() {
+        let data = ndarray::array![[1.0, 2.0], [3.0, 4.0]];
+        let weights = Array2::zeros((2, 2));
+        let config = RegularizationConfig::new(0.1, false).unwrap();
+        let grad = score_gradient(&weights, &data, &config).unwrap();
+        
+        // With W=0, residuals = X, so ∇ℓ = -(1/n) * X^T @ X
+        // ∇||W||₁ = 0 (all zero weights have zero subgradient)
+        let expected_grad_ls = data.t().dot(&data) * (-1.0 / 2.0);
+        
+        for i in 0..2 {
+            for j in 0..2 {
+                assert_abs_diff_eq!(grad[[i, j]], expected_grad_ls[[i, j]], epsilon = 1e-12);
+            }
+        }
+    }
+
+    #[test]
+    fn test_score_gradient_shape() {
+        let data = ndarray::array![[1.0, 2.0, 3.0], 
+                                   [4.0, 5.0, 6.0]];
+        let weights = ndarray::array![[0.1, 0.0, 0.2],
+                                      [0.0, 0.3, 0.0],
+                                      [0.1, 0.0, 0.2]];
+        let config = RegularizationConfig::new(0.2, false).unwrap();
+        let grad = score_gradient(&weights, &data, &config).unwrap();
+        
+        // Shape must match weight matrix
+        assert_eq!(grad.dim(), (3, 3));
+    }
+
+    #[test]
+    fn test_score_gradient_finite_difference() {
+        // Verify gradient via finite differences: ∇F ≈ (F(W+ε) - F(W-ε))/(2ε)
+        let data = ndarray::array![[1.0, 2.0], 
+                                   [3.0, 4.0],
+                                   [5.0, 6.0]];
+        let w = ndarray::array![[0.1, 0.05], [-0.05, 0.2]];
+        let config = RegularizationConfig::new(0.15, false).unwrap();
+        
+        let grad_analytical = score_gradient(&w, &data, &config).unwrap();
+        
+        let epsilon = 1e-5;
+        let mut grad_numerical = Array2::zeros((2, 2));
+        
+        for i in 0..2 {
+            for j in 0..2 {
+                let mut w_plus = w.clone();
+                let mut w_minus = w.clone();
+                w_plus[[i, j]] += epsilon;
+                w_minus[[i, j]] -= epsilon;
+                
+                let f_plus = score_function(&w_plus, &data, &config).unwrap();
+                let f_minus = score_function(&w_minus, &data, &config).unwrap();
+                grad_numerical[[i, j]] = (f_plus - f_minus) / (2.0 * epsilon);
+            }
+        }
+        
+        // Check element-wise accuracy
+        for i in 0..2 {
+            for j in 0..2 {
+                assert_abs_diff_eq!(grad_analytical[[i, j]], grad_numerical[[i, j]], epsilon = 1e-4);
+            }
+        }
+    }
+
+    #[test]
+    fn test_score_gradient_components() {
+        // Verify gradient decomposition: ∇F = ∇ℓ + λ·∇||W||₁
+        let data = ndarray::array![[1.0, 2.0], [3.0, 4.0]];
+        let weights = ndarray::array![[0.2, -0.1], [0.3, 0.0]];
+        let lambda = 0.25;
+        let config = RegularizationConfig::new(lambda, false).unwrap();
+        
+        let grad_full = score_gradient(&weights, &data, &config).unwrap();
+        let grad_ls = mse_gradient(&data, &weights).unwrap();
+        let grad_l1 = l1_gradient(&weights);
+        let expected = grad_ls + &grad_l1 * lambda;
+        
+        for i in 0..2 {
+            for j in 0..2 {
+                assert_abs_diff_eq!(grad_full[[i, j]], expected[[i, j]], epsilon = 1e-12);
+            }
+        }
+    }
+
+    #[test]
+    fn test_score_gradient_sign_function() {
+        // Verify L₁ subgradient (sign function) correctness
+        let data = ndarray::array![[1.0, 2.0], [3.0, 4.0]];
+        let weights = ndarray::array![[0.5, -0.3], [0.0, 0.1]];
+        let config = RegularizationConfig::new(1.0, false).unwrap();
+        
+        let grad = score_gradient(&weights, &data, &config).unwrap();
+        
+        // Extract L₁ component (at high lambda, should dominate for small LS gradients)
+        // At least verify sign patterns exist
+        assert!(grad.iter().any(|x| x.abs() > 0.0));
+        assert!(grad.iter().all(|x| x.is_finite()));
+    }
+
+    #[test]
+    fn test_score_gradient_descent_direction() {
+        // Verify gradient points toward descent direction
+        let data = ndarray::array![[1.0, 2.0], [3.0, 4.0]];
+        let weights = ndarray::array![[0.1, 0.05], [0.05, 0.1]];
+        let config = RegularizationConfig::new(0.1, false).unwrap();
+        
+        let f_current = score_function(&weights, &data, &config).unwrap();
+        let grad = score_gradient(&weights, &data, &config).unwrap();
+        
+        // Take small step in negative gradient direction
+        let step_size = 0.01;
+        let weights_new = &weights - &grad * step_size;
+        let f_new = score_function(&weights_new, &data, &config).unwrap();
+        
+        // Loss should decrease (f_new < f_current) with small enough step
+        assert!(f_new < f_current, "Gradient descent should reduce loss");
+    }
+
+    #[test]
+    fn test_score_gradient_dimension_mismatch() {
+        let data = ndarray::array![[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]];
+        let weights = Array2::zeros((2, 2));
+        let config = RegularizationConfig::new(0.1, false).unwrap();
+        assert!(score_gradient(&weights, &data, &config).is_err());
+    }
+
+    #[test]
+    fn test_score_gradient_empty_data() {
+        let data: DataMatrix = Array2::zeros((0, 2));
+        let weights = Array2::zeros((2, 2));
+        let config = RegularizationConfig::new(0.1, false).unwrap();
+        assert!(score_gradient(&weights, &data, &config).is_err());
+    }
+
+    #[test]
+    fn test_score_gradient_numerical_stability() {
+        // Test with very small weights
+        let data = ndarray::array![[1e-10, 2e-10], [3e-10, 4e-10]];
+        let weights = ndarray::array![[1e-15, -1e-15], [1e-15, 1e-15]];
+        let config = RegularizationConfig::new(0.1, false).unwrap();
+        
+        let grad = score_gradient(&weights, &data, &config).unwrap();
+        
+        // Should still compute without NaN/Inf
+        assert!(grad.iter().all(|x| x.is_finite()));
     }
 }
