@@ -89,11 +89,8 @@ fn test_solve_ecp_zero_lambda() {
     let reg_config = RegularizationConfig::new(0.0, false).unwrap();
     let opt_config = OptimizationConfig::new(20, 15, 5, 1e-8, 1.0, 0.25, 0.3).unwrap();
 
-    match solve_ecp(&w_init, &data, &reg_config, &opt_config) {
-        Ok(result) => {
-            assert!(result.weight_matrix.iter().any(|x| x.is_finite()));
-        }
-        Err(_) => {}
+    if let Ok(result) = solve_ecp(&w_init, &data, &reg_config, &opt_config) {
+        assert!(result.weight_matrix.iter().any(|x| x.is_finite()));
     }
 }
 
@@ -107,17 +104,14 @@ fn test_solve_ecp_high_lambda() {
     let reg_config = RegularizationConfig::new(0.9, false).unwrap();
     let opt_config = OptimizationConfig::new(20, 15, 5, 1e-8, 1.0, 0.25, 0.3).unwrap();
 
-    match solve_ecp(&w_init, &data, &reg_config, &opt_config) {
-        Ok(result) => {
-            // Sparser solution expected
-            let edges_high_lambda = result
-                .weight_matrix
-                .iter()
-                .filter(|x| x.abs() > 0.01)
-                .count();
-            assert!(edges_high_lambda <= d * d / 2); // At most half edges
-        }
-        Err(_) => {}
+    if let Ok(result) = solve_ecp(&w_init, &data, &reg_config, &opt_config) {
+        // Sparser solution expected
+        let edges_high_lambda = result
+            .weight_matrix
+            .iter()
+            .filter(|x| x.abs() > 0.01)
+            .count();
+        assert!(edges_high_lambda <= d * d / 2); // At most half edges
     }
 }
 
@@ -131,18 +125,15 @@ fn test_solve_ecp_acyclicity_satisfied() {
     let reg_config = RegularizationConfig::new(0.1, false).unwrap();
     let opt_config = OptimizationConfig::new(30, 20, 8, 1e-6, 1.0, 0.25, 0.3).unwrap();
 
-    match solve_ecp(&w_init, &data, &reg_config, &opt_config) {
-        Ok(result) => {
-            // Check h(W) is small
-            let h =
-                acyclicity_constraint(&result.weight_matrix).expect("h(W) should be computable");
-            assert!(
-                h < 1e-3 || h < 0.1,
-                "h(W) should be reasonably small, got {}",
-                h
-            );
-        }
-        Err(_) => {}
+    if let Ok(result) = solve_ecp(&w_init, &data, &reg_config, &opt_config) {
+        // Check h(W) is small
+        let h =
+            acyclicity_constraint(&result.weight_matrix).expect("h(W) should be computable");
+        assert!(
+            h < 1e-3 || h < 0.1,
+            "h(W) should be reasonably small, got {}",
+            h
+        );
     }
 }
 
@@ -156,12 +147,9 @@ fn test_solve_ecp_output_shape() {
     let reg_config = RegularizationConfig::new(0.0, false).unwrap();
     let opt_config = OptimizationConfig::new(10, 10, 5, 1e-8, 1.0, 0.25, 0.3).unwrap();
 
-    match solve_ecp(&w_init, &data, &reg_config, &opt_config) {
-        Ok(result) => {
-            assert_eq!(result.weight_matrix.shape(), &[d, d]);
-            assert_eq!(result.adjacency_matrix.shape(), &[d, d]);
-        }
-        Err(_) => {}
+    if let Ok(result) = solve_ecp(&w_init, &data, &reg_config, &opt_config) {
+        assert_eq!(result.weight_matrix.shape(), &[d, d]);
+        assert_eq!(result.adjacency_matrix.shape(), &[d, d]);
     }
 }
 
@@ -175,11 +163,8 @@ fn test_solve_ecp_single_node() {
     let reg_config = RegularizationConfig::new(0.0, false).unwrap();
     let opt_config = OptimizationConfig::new(5, 5, 2, 1e-8, 1.0, 0.25, 0.3).unwrap();
 
-    match solve_ecp(&w_init, &data, &reg_config, &opt_config) {
-        Ok(result) => {
-            assert_eq!(result.weight_matrix.shape(), &[1, 1]);
-        }
-        Err(_) => {}
+    if let Ok(result) = solve_ecp(&w_init, &data, &reg_config, &opt_config) {
+        assert_eq!(result.weight_matrix.shape(), &[1, 1]);
     }
 }
 
@@ -198,12 +183,9 @@ fn test_solve_ecp_deterministic() {
     let result2 = solve_ecp(&w_init, &data, &reg_config, &opt_config);
 
     // Results might differ slightly due to initialization, but should be similar
-    match (result1, result2) {
-        (Ok(r1), Ok(r2)) => {
-            // Both converged, should have similar properties
-            assert!((r1.constraint_violation - r2.constraint_violation).abs() < 0.1);
-        }
-        _ => {}
+    if let (Ok(r1), Ok(r2)) = (result1, result2) {
+        // Both converged, should have similar properties
+        assert!((r1.constraint_violation - r2.constraint_violation).abs() < 0.1);
     }
 }
 
@@ -217,13 +199,10 @@ fn test_solve_ecp_finite_result() {
     let reg_config = RegularizationConfig::new(0.1, false).unwrap();
     let opt_config = OptimizationConfig::new(10, 10, 5, 1e-8, 1.0, 0.25, 0.3).unwrap();
 
-    match solve_ecp(&w_init, &data, &reg_config, &opt_config) {
-        Ok(result) => {
-            assert!(result.weight_matrix.iter().all(|x| x.is_finite()));
-            assert!(result.constraint_violation.is_finite());
-            assert!(result.final_score.is_finite());
-        }
-        Err(_) => {}
+    if let Ok(result) = solve_ecp(&w_init, &data, &reg_config, &opt_config) {
+        assert!(result.weight_matrix.iter().all(|x| x.is_finite()));
+        assert!(result.constraint_violation.is_finite());
+        assert!(result.final_score.is_finite());
     }
 }
 
@@ -237,11 +216,8 @@ fn test_solve_ecp_iterates_at_least_once() {
     let reg_config = RegularizationConfig::new(0.0, false).unwrap();
     let opt_config = OptimizationConfig::new(20, 10, 5, 1e-8, 1.0, 0.25, 0.3).unwrap();
 
-    match solve_ecp(&w_init, &data, &reg_config, &opt_config) {
-        Ok(result) => {
-            assert!(result.iterations >= 1);
-        }
-        Err(_) => {}
+    if let Ok(result) = solve_ecp(&w_init, &data, &reg_config, &opt_config) {
+        assert!(result.iterations >= 1);
     }
 }
 
@@ -256,11 +232,8 @@ fn test_solve_ecp_respects_max_iterations() {
     let max_iters = 5;
     let opt_config = OptimizationConfig::new(max_iters, 5, 3, 1e-8, 1.0, 0.25, 0.3).unwrap();
 
-    match solve_ecp(&w_init, &data, &reg_config, &opt_config) {
-        Ok(result) => {
-            assert!(result.iterations <= max_iters);
-        }
-        Err(_) => {}
+    if let Ok(result) = solve_ecp(&w_init, &data, &reg_config, &opt_config) {
+        assert!(result.iterations <= max_iters);
     }
 }
 
@@ -275,11 +248,8 @@ fn test_solve_ecp_penalty_increases() {
     let reg_config = RegularizationConfig::new(0.1, false).unwrap();
     let opt_config = OptimizationConfig::new(10, 5, 3, 1e-8, 1.0, 0.25, 0.3).unwrap();
 
-    match solve_ecp(&w_init, &data, &reg_config, &opt_config) {
-        Ok(result) => {
-            assert!(result.constraint_violation.is_finite());
-        }
-        Err(_) => {}
+    if let Ok(result) = solve_ecp(&w_init, &data, &reg_config, &opt_config) {
+        assert!(result.constraint_violation.is_finite());
     }
 }
 
@@ -293,11 +263,8 @@ fn test_solve_ecp_high_dimensional() {
     let reg_config = RegularizationConfig::new(0.3, false).unwrap();
     let opt_config = OptimizationConfig::new(10, 10, 5, 1e-8, 1.0, 0.25, 0.3).unwrap();
 
-    match solve_ecp(&w_init, &data, &reg_config, &opt_config) {
-        Ok(result) => {
-            assert_eq!(result.weight_matrix.shape(), &[d, d]);
-        }
-        Err(_) => {}
+    if let Ok(result) = solve_ecp(&w_init, &data, &reg_config, &opt_config) {
+        assert_eq!(result.weight_matrix.shape(), &[d, d]);
     }
 }
 
@@ -311,11 +278,8 @@ fn test_solve_ecp_low_dimensional() {
     let reg_config = RegularizationConfig::new(0.1, false).unwrap();
     let opt_config = OptimizationConfig::new(10, 5, 2, 1e-8, 1.0, 0.25, 0.3).unwrap();
 
-    match solve_ecp(&w_init, &data, &reg_config, &opt_config) {
-        Ok(result) => {
-            assert_eq!(result.weight_matrix.shape(), &[2, 2]);
-        }
-        Err(_) => {}
+    if let Ok(result) = solve_ecp(&w_init, &data, &reg_config, &opt_config) {
+        assert_eq!(result.weight_matrix.shape(), &[2, 2]);
     }
 }
 
@@ -329,12 +293,9 @@ fn test_solve_ecp_adjacency_binary() {
     let reg_config = RegularizationConfig::new(0.1, false).unwrap();
     let opt_config = OptimizationConfig::new(10, 10, 5, 1e-8, 1.0, 0.25, 0.3).unwrap();
 
-    match solve_ecp(&w_init, &data, &reg_config, &opt_config) {
-        Ok(result) => {
-            for &entry in result.adjacency_matrix.iter() {
-                assert!(entry == 0 || entry == 1);
-            }
+    if let Ok(result) = solve_ecp(&w_init, &data, &reg_config, &opt_config) {
+        for &entry in result.adjacency_matrix.iter() {
+            assert!(entry == 0 || entry == 1);
         }
-        Err(_) => {}
     }
 }

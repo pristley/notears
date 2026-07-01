@@ -1144,7 +1144,7 @@ mod tests {
         assert!(adj.iter().all(|&x| x == 0 || x == 1));
 
         // Threshold should be reasonable
-        assert!(threshold >= 0.0 && threshold <= 0.8);
+        assert!((0.0..=0.8).contains(&threshold));
     }
 
     #[test]

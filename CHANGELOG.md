@@ -5,6 +5,15 @@ Format follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- Code quality improvements for clippy compliance:
+  - Replaced useless `vec!` macros with array literals
+  - Removed unnecessary `let` bindings in return expressions
+  - Converted single-pattern `match` statements to `if let` expressions
+  - Fixed field reassignment after `Default::default()` using struct initializers
+  - Added missing `Array2` import in acyclicity test module
+  - All code now passes `cargo clippy --all-targets --all-features -- -D warnings`
+
 ### Added
 - Comprehensive documentation suite:
   - **API Reference** (docs/API.md) - Complete type and function documentation

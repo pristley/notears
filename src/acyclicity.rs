@@ -5,7 +5,6 @@
 /// It equals 0 iff W is acyclic, and is differentiable everywhere.
 use crate::types::WeightMatrix;
 use crate::utils;
-use ndarray::Array2;
 use std::f64;
 
 /// Error types for acyclicity operations
@@ -167,6 +166,7 @@ pub fn is_dag(weight_matrix: &WeightMatrix, threshold: f64) -> Result<bool, Acyc
 mod tests {
     use super::*;
     use approx::assert_abs_diff_eq;
+    use ndarray::Array2;
 
     #[test]
     fn test_zero_matrix_is_acyclic() {

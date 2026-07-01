@@ -235,6 +235,7 @@ pub fn frobenius_norm(matrix: &Array2<f64>) -> f64 {
 ///
 /// # Returns
 /// Spectral norm ||A||_2
+#[allow(dead_code)]
 pub fn spectral_norm(matrix: &Array2<f64>) -> f64 {
     // Simplified: compute via power iteration or use max singular value
     // For testing, we approximate with largest absolute eigenvalue
@@ -250,6 +251,7 @@ pub fn spectral_norm(matrix: &Array2<f64>) -> f64 {
 ///
 /// # Returns
 /// Infinity norm ||A||_∞
+#[allow(dead_code)]
 pub fn infinity_norm(matrix: &Array2<f64>) -> f64 {
     let d = matrix.shape()[0];
     let mut max_sum: f64 = 0.0;
@@ -281,6 +283,7 @@ fn rand_normal(rng: &mut rand::rngs::ThreadRng) -> f64 {
 ///
 /// # Returns
 /// Number of non-zero entries
+#[allow(dead_code)]
 pub fn count_nonzero(matrix: &Array2<f64>) -> usize {
     matrix.iter().filter(|x| x.abs() > 1e-15).count()
 }

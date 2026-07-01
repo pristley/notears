@@ -101,7 +101,7 @@ impl OptimizationConfig {
         }
 
         // Validate constraint tolerance: must be in [1e-10, 1e-4]
-        if constraint_tolerance < 1e-10 || constraint_tolerance > 1e-4 {
+        if !(1e-10..=1e-4).contains(&constraint_tolerance) {
             return Err(ConfigError::InvalidConstraintTolerance(
                 constraint_tolerance,
             ));

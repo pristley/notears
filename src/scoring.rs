@@ -299,8 +299,8 @@ pub fn total_loss_gradient(
 ///
 /// Mathematical derivation:
 /// - ∂ℓ/∂W = ∂/∂W [(1/(2n)) ||X - XW||²_F]
-///         = (1/(2n)) * 2 * (X - XW)^T * (-X)
-///         = -(1/n) * X^T @ (X - XW)
+///   = (1/(2n)) * 2 * (X - XW)^T * (-X)
+///   = -(1/n) * X^T @ (X - XW)
 /// - ∂||W||₁/∂W = sign(W) (element-wise subdifferential)
 ///
 /// Optimization integration:

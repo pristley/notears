@@ -20,15 +20,12 @@ fn test_learn_dag_basic_small_dag() {
     let data = common::data_from_sem(n, d, &w_true, 0.1);
     let data_std = standardize_data(&data).expect("standardization failed");
 
-    match learn_dag(&data_std, 0.0, 0.3, None) {
-        Ok(result) => {
-            assert!(result.constraint_violation.is_finite());
-            assert_eq!(result.weight_matrix.shape(), &[d, d]);
-            assert_eq!(result.adjacency_matrix.shape(), &[d, d]);
-        }
-        Err(e) => {
-            eprintln!("learn_dag failed (known issue): {}", e);
-        }
+    if let Ok(result) = learn_dag(&data_std, 0.0, 0.3, None) {
+        assert!(result.constraint_violation.is_finite());
+        assert_eq!(result.weight_matrix.shape(), &[d, d]);
+        assert_eq!(result.adjacency_matrix.shape(), &[d, d]);
+    } else if let Err(e) = learn_dag(&data_std, 0.0, 0.3, None) {
+        eprintln!("learn_dag failed (known issue): {}", e);
     }
 }
 
@@ -43,11 +40,8 @@ fn test_learn_dag_with_config() {
     let config = notears::OptimizationConfig::new(20, 15, 8, 1e-8, 1.0, 0.25, 0.3)
         .expect("config creation failed");
 
-    match learn_dag(&data_std, 0.1, 0.3, Some(config)) {
-        Ok(result) => {
-            assert!(result.weight_matrix.iter().all(|x| x.is_finite()));
-        }
-        Err(_) => {}
+    if let Ok(result) = learn_dag(&data_std, 0.1, 0.3, Some(config)) {
+        assert!(result.weight_matrix.iter().all(|x| x.is_finite()));
     }
 }
 
@@ -59,11 +53,8 @@ fn test_learn_dag_zero_lambda() {
     let data = common::random_data(n, d);
     let data_std = standardize_data(&data).expect("standardization failed");
 
-    match learn_dag(&data_std, 0.0, 0.3, None) {
-        Ok(result) => {
-            assert_eq!(result.weight_matrix.shape(), &[d, d]);
-        }
-        Err(_) => {}
+    if let Ok(result) = learn_dag(&data_std, 0.0, 0.3, None) {
+        assert_eq!(result.weight_matrix.shape(), &[d, d]);
     }
 }
 
@@ -75,17 +66,14 @@ fn test_learn_dag_high_lambda() {
     let data = common::random_data(n, d);
     let data_std = standardize_data(&data).expect("standardization failed");
 
-    match learn_dag(&data_std, 0.9, 0.3, None) {
-        Ok(result) => {
-            // Sparse solution expected
-            let edges = result
-                .weight_matrix
-                .iter()
-                .filter(|x| x.abs() > 0.01)
-                .count();
-            assert!(edges <= d * d / 2);
-        }
-        Err(_) => {}
+    if let Ok(result) = learn_dag(&data_std, 0.9, 0.3, None) {
+        // Sparse solution expected
+        let edges = result
+            .weight_matrix
+            .iter()
+            .filter(|x| x.abs() > 0.01)
+            .count();
+        assert!(edges <= d * d / 2);
     }
 }
 
@@ -97,11 +85,8 @@ fn test_learn_dag_low_threshold() {
     let data = common::random_data(n, d);
     let data_std = standardize_data(&data).expect("standardization failed");
 
-    match learn_dag(&data_std, 0.1, 0.1, None) {
-        Ok(result) => {
-            assert_eq!(result.adjacency_matrix.shape(), &[d, d]);
-        }
-        Err(_) => {}
+    if let Ok(result) = learn_dag(&data_std, 0.1, 0.1, None) {
+        assert_eq!(result.adjacency_matrix.shape(), &[d, d]);
     }
 }
 
@@ -113,11 +98,8 @@ fn test_learn_dag_high_threshold() {
     let data = common::random_data(n, d);
     let data_std = standardize_data(&data).expect("standardization failed");
 
-    match learn_dag(&data_std, 0.1, 0.5, None) {
-        Ok(result) => {
-            assert_eq!(result.adjacency_matrix.shape(), &[d, d]);
-        }
-        Err(_) => {}
+    if let Ok(result) = learn_dag(&data_std, 0.1, 0.5, None) {
+        assert_eq!(result.adjacency_matrix.shape(), &[d, d]);
     }
 }
 
@@ -129,14 +111,11 @@ fn test_learn_dag_single_node() {
     let data = common::random_data(n, d);
     let data_std = standardize_data(&data).expect("standardization failed");
 
-    match learn_dag(&data_std, 0.0, 0.3, None) {
-        Ok(result) => {
-            assert_eq!(result.weight_matrix.shape(), &[1, 1]);
-            assert_eq!(result.weight_matrix[[0, 0]], 0.0); // No self-loops
-        }
-        Err(e) => {
-            eprintln!("Single node case error: {}", e);
-        }
+    if let Ok(result) = learn_dag(&data_std, 0.0, 0.3, None) {
+        assert_eq!(result.weight_matrix.shape(), &[1, 1]);
+        assert_eq!(result.weight_matrix[[0, 0]], 0.0); // No self-loops
+    } else if let Err(e) = learn_dag(&data_std, 0.0, 0.3, None) {
+        eprintln!("Single node case error: {}", e);
     }
 }
 
@@ -148,11 +127,8 @@ fn test_learn_dag_two_nodes() {
     let data = common::random_data(n, d);
     let data_std = standardize_data(&data).expect("standardization failed");
 
-    match learn_dag(&data_std, 0.1, 0.3, None) {
-        Ok(result) => {
-            assert_eq!(result.weight_matrix.shape(), &[2, 2]);
-        }
-        Err(_) => {}
+    if let Ok(result) = learn_dag(&data_std, 0.1, 0.3, None) {
+        assert_eq!(result.weight_matrix.shape(), &[2, 2]);
     }
 }
 
@@ -164,11 +140,8 @@ fn test_learn_dag_large_dimension() {
     let data = common::random_data(n, d);
     let data_std = standardize_data(&data).expect("standardization failed");
 
-    match learn_dag(&data_std, 0.3, 0.3, None) {
-        Ok(result) => {
-            assert_eq!(result.weight_matrix.shape(), &[d, d]);
-        }
-        Err(_) => {}
+    if let Ok(result) = learn_dag(&data_std, 0.3, 0.3, None) {
+        assert_eq!(result.weight_matrix.shape(), &[d, d]);
     }
 }
 
@@ -181,13 +154,10 @@ fn test_learn_dag_few_samples() {
     let data_std = standardize_data(&data).expect("standardization failed");
 
     // With λ > 0, should still work
-    match learn_dag(&data_std, 0.5, 0.3, None) {
-        Ok(result) => {
-            assert_eq!(result.weight_matrix.shape(), &[d, d]);
-        }
-        Err(e) => {
-            eprintln!("Underdetermined case: {}", e);
-        }
+    if let Ok(result) = learn_dag(&data_std, 0.5, 0.3, None) {
+        assert_eq!(result.weight_matrix.shape(), &[d, d]);
+    } else if let Err(e) = learn_dag(&data_std, 0.5, 0.3, None) {
+        eprintln!("Underdetermined case: {}", e);
     }
 }
 
@@ -199,11 +169,8 @@ fn test_learn_dag_many_samples() {
     let data = common::random_data(n, d);
     let data_std = standardize_data(&data).expect("standardization failed");
 
-    match learn_dag(&data_std, 0.0, 0.3, None) {
-        Ok(result) => {
-            assert!(result.constraint_violation < 0.1);
-        }
-        Err(_) => {}
+    if let Ok(result) = learn_dag(&data_std, 0.0, 0.3, None) {
+        assert!(result.constraint_violation < 0.1);
     }
 }
 
@@ -215,12 +182,9 @@ fn test_learn_dag_output_edges() {
     let data = common::random_data(n, d);
     let data_std = standardize_data(&data).expect("standardization failed");
 
-    match learn_dag(&data_std, 0.1, 0.3, None) {
-        Ok(result) => {
-            let edges = result.edges();
-            assert!(edges.is_empty() || !edges.is_empty()); // Valid for both cases
-        }
-        Err(_) => {}
+    if let Ok(result) = learn_dag(&data_std, 0.1, 0.3, None) {
+        let edges = result.edges();
+        assert!(edges.is_empty() || !edges.is_empty()); // Valid for both cases
     }
 }
 
@@ -232,19 +196,13 @@ fn test_learn_dag_acyclicity_check() {
     let data = common::random_data(n, d);
     let data_std = standardize_data(&data).expect("standardization failed");
 
-    match learn_dag(&data_std, 0.1, 0.3, None) {
-        Ok(result) => {
-            match validate_dag(&result.weight_matrix, 1e-6) {
-                Ok(val_result) => {
-                    // Should be acyclic by topological sort
-                    assert!(val_result.is_acyclic_by_topological_sort);
-                }
-                Err(e) => {
-                    eprintln!("Validation error: {}", e);
-                }
-            }
+    if let Ok(result) = learn_dag(&data_std, 0.1, 0.3, None) {
+        if let Ok(val_result) = validate_dag(&result.weight_matrix, 1e-6) {
+            // Should be acyclic by topological sort
+            assert!(val_result.is_acyclic_by_topological_sort);
+        } else if let Err(e) = validate_dag(&result.weight_matrix, 1e-6) {
+            eprintln!("Validation error: {}", e);
         }
-        Err(_) => {}
     }
 }
 
@@ -260,11 +218,8 @@ fn test_learn_dag_standardization_required() {
 
     let data_std = standardize_data(&data).expect("standardization failed");
 
-    match learn_dag(&data_std, 0.1, 0.3, None) {
-        Ok(result) => {
-            assert!(result.weight_matrix.iter().all(|x| x.is_finite()));
-        }
-        Err(_) => {}
+    if let Ok(result) = learn_dag(&data_std, 0.1, 0.3, None) {
+        assert!(result.weight_matrix.iter().all(|x| x.is_finite()));
     }
 }
 
@@ -277,16 +232,13 @@ fn test_learn_dag_with_sem_structure() {
     let data = common::data_from_sem(n, d, &w_true, 0.2);
     let data_std = standardize_data(&data).expect("standardization failed");
 
-    match learn_dag(&data_std, 0.05, 0.3, None) {
-        Ok(result) => {
-            // Count edges
-            let true_edges = w_true.iter().filter(|x| x.abs() > 0.01).count();
-            let detected_edges = result.adjacency_matrix.iter().filter(|x| **x > 0).count();
+    if let Ok(result) = learn_dag(&data_std, 0.05, 0.3, None) {
+        // Count edges
+        let true_edges = w_true.iter().filter(|x| x.abs() > 0.01).count();
+        let detected_edges = result.adjacency_matrix.iter().filter(|x| **x > 0).count();
 
-            eprintln!("True edges: {}, Detected: {}", true_edges, detected_edges);
-            assert!(result.weight_matrix.iter().all(|x| x.is_finite()));
-        }
-        Err(_) => {}
+        eprintln!("True edges: {}, Detected: {}", true_edges, detected_edges);
+        assert!(result.weight_matrix.iter().all(|x| x.is_finite()));
     }
 }
 
@@ -297,12 +249,9 @@ fn test_learn_dag_zero_matrix_input() {
     let n = 100;
     let data = ndarray::Array2::<f64>::zeros((n, d));
 
-    match learn_dag(&data, 0.0, 0.3, None) {
-        Ok(result) => {
-            // Should handle gracefully
-            assert_eq!(result.weight_matrix.shape(), &[d, d]);
-        }
-        Err(_) => {}
+    if let Ok(result) = learn_dag(&data, 0.0, 0.3, None) {
+        // Should handle gracefully
+        assert_eq!(result.weight_matrix.shape(), &[d, d]);
     }
 }
 
@@ -317,13 +266,10 @@ fn test_learn_dag_consistency_across_runs() {
     let result1 = learn_dag(&data_std, 0.1, 0.3, None);
     let result2 = learn_dag(&data_std, 0.1, 0.3, None);
 
-    match (result1, result2) {
-        (Ok(r1), Ok(r2)) => {
-            // Results might differ due to initialization
-            // but should have same shape and finite values
-            assert_eq!(r1.weight_matrix.shape(), r2.weight_matrix.shape());
-        }
-        _ => {}
+    if let (Ok(r1), Ok(r2)) = (result1, result2) {
+        // Results might differ due to initialization
+        // but should have same shape and finite values
+        assert_eq!(r1.weight_matrix.shape(), r2.weight_matrix.shape());
     }
 }
 
@@ -338,18 +284,15 @@ fn test_learn_dag_edge_count_monotonicity() {
     let result_strict = learn_dag(&data_std, 0.1, 0.5, None);
     let result_lenient = learn_dag(&data_std, 0.1, 0.1, None);
 
-    match (result_strict, result_lenient) {
-        (Ok(r_strict), Ok(r_lenient)) => {
-            let edges_strict = r_strict.adjacency_matrix.iter().filter(|x| **x > 0).count();
-            let edges_lenient = r_lenient
-                .adjacency_matrix
-                .iter()
-                .filter(|x| **x > 0)
-                .count();
+    if let (Ok(r_strict), Ok(r_lenient)) = (result_strict, result_lenient) {
+        let edges_strict = r_strict.adjacency_matrix.iter().filter(|x| **x > 0).count();
+        let edges_lenient = r_lenient
+            .adjacency_matrix
+            .iter()
+            .filter(|x| **x > 0)
+            .count();
 
-            assert!(edges_lenient >= edges_strict);
-        }
-        _ => {}
+        assert!(edges_lenient >= edges_strict);
     }
 }
 
@@ -364,24 +307,21 @@ fn test_learn_dag_sparsity_vs_lambda() {
     let result_low_lambda = learn_dag(&data_std, 0.0, 0.3, None);
     let result_high_lambda = learn_dag(&data_std, 0.8, 0.3, None);
 
-    match (result_low_lambda, result_high_lambda) {
-        (Ok(r_low), Ok(r_high)) => {
-            let edges_low = r_low
-                .weight_matrix
-                .iter()
-                .filter(|x| x.abs() > 0.01)
-                .count();
-            let edges_high = r_high
-                .weight_matrix
-                .iter()
-                .filter(|x| x.abs() > 0.01)
-                .count();
+    if let (Ok(r_low), Ok(r_high)) = (result_low_lambda, result_high_lambda) {
+        let edges_low = r_low
+            .weight_matrix
+            .iter()
+            .filter(|x| x.abs() > 0.01)
+            .count();
+        let edges_high = r_high
+            .weight_matrix
+            .iter()
+            .filter(|x| x.abs() > 0.01)
+            .count();
 
-            assert!(
-                edges_high <= edges_low,
-                "Higher λ should give sparser solution"
-            );
-        }
-        _ => {}
+        assert!(
+            edges_high <= edges_low,
+            "Higher λ should give sparser solution"
+        );
     }
 }

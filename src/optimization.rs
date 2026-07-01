@@ -41,6 +41,7 @@ pub enum OptimizationError {
 }
 
 /// Augmented Lagrangian optimizer state
+#[allow(dead_code)]
 struct OptimizationState {
     weight_matrix: WeightMatrix,
     dual_variable: f64, // λ
@@ -504,9 +505,8 @@ fn matrix_to_vec(mat: &WeightMatrix) -> Array1<f64> {
     Array1::from(mat.iter().copied().collect::<Vec<_>>())
 }
 
-/// Objective function wrapper for L-BFGS
-/// Computes L_ρ(W, α) for weight matrix W (represented as vector)
-
+/// Objective function wrapper for L-BFGS: computes L_ρ(W, α) for weight matrix W (represented as vector)
+///
 /// Compute gradient for vector parameter (flattened weight matrix)
 ///
 /// Evaluates ∇_W L_ρ(W, α) and returns as flattened vector
@@ -544,6 +544,7 @@ fn objective_vec(
 /// Effective for non-convex smooth optimization.
 struct SimpleLBFGS {
     memory: usize,            // Number of history pairs to keep
+    #[allow(dead_code)]
     max_iters: usize,         // Maximum iterations
     tolerance_grad: f64,      // Gradient norm tolerance
     line_search_iters: usize, // Max line search attempts
@@ -553,7 +554,7 @@ impl SimpleLBFGS {
     /// Create new L-BFGS optimizer
     pub fn new(memory: usize, max_iters: usize) -> Self {
         SimpleLBFGS {
-            memory: memory.max(3).min(20),
+            memory: memory.clamp(3, 20),
             max_iters,
             tolerance_grad: 1e-6,
             line_search_iters: 10,
@@ -616,7 +617,7 @@ impl SimpleLBFGS {
             if m > 0 {
                 let gamma = rho_list[m - 1] * s_list[m - 1].dot(&y_list[m - 1]);
                 if gamma > 0.0 {
-                    direction = direction * gamma.recip();
+                    direction *= gamma.recip();
                 }
             }
 
@@ -1023,7 +1024,7 @@ pub fn solve_ecp(
 
         // **Step 2: Dual ascent - update Lagrange multiplier**
         let h_curr = acyclicity::acyclicity_constraint(&w)?;
-        alpha = alpha + rho * h_curr;
+        alpha += rho * h_curr;
 
         // **Step 3: Convergence check**
         if h_curr < optimizer_config.constraint_tolerance {
@@ -1730,8 +1731,10 @@ mod tests {
         let config = RegularizationConfig::new(0.1, false).unwrap();
 
         // Create config with small max iterations
-        let mut optimizer_config = OptimizationConfig::default();
-        optimizer_config.max_lbfgs_iterations = 5;
+        let optimizer_config = OptimizationConfig {
+            max_lbfgs_iterations: 5,
+            ..Default::default()
+        };
 
         let alpha = 1.0;
         let rho = 2.0;
@@ -1864,8 +1867,10 @@ mod tests {
         let config = RegularizationConfig::new(0.1, false).unwrap();
 
         // Create config with very large memory
-        let mut optimizer_config = OptimizationConfig::default();
-        optimizer_config.lbfgs_memory = 1000;
+        let optimizer_config = OptimizationConfig {
+            lbfgs_memory: 1000,
+            ..Default::default()
+        };
 
         // Should still work (memory is clamped to max 20)
         let result = solve_primal_subproblem(&w_init, 0.0, 1.0, &data, &config, &optimizer_config);
@@ -1884,10 +1889,12 @@ mod tests {
         let w_init = Array2::zeros((2, 2));
         let config = RegularizationConfig::new(0.1, false).unwrap();
 
-        let mut opt_config = OptimizationConfig::default();
-        opt_config.max_outer_iterations = 2;
-        opt_config.max_lbfgs_iterations = 10;
-        opt_config.constraint_tolerance = 1e-2;
+        let opt_config = OptimizationConfig {
+            max_outer_iterations: 2,
+            max_lbfgs_iterations: 10,
+            constraint_tolerance: 1e-2,
+            ..Default::default()
+        };
 
         let result = solve_ecp(&w_init, &data, &config, &opt_config);
         // Should not panic; may return Ok or Err depending on convergence
@@ -1927,9 +1934,11 @@ mod tests {
         let w_init = Array2::zeros((2, 2));
         let config = RegularizationConfig::new(0.05, false).unwrap();
 
-        let mut opt_config = OptimizationConfig::default();
-        opt_config.max_outer_iterations = 1;
-        opt_config.max_lbfgs_iterations = 5;
+        let opt_config = OptimizationConfig {
+            max_outer_iterations: 1,
+            max_lbfgs_iterations: 5,
+            ..Default::default()
+        };
 
         let result = solve_ecp(&w_init, &data, &config, &opt_config);
 
@@ -1961,9 +1970,11 @@ mod tests {
         let w_init = Array2::zeros((2, 2));
         let config = RegularizationConfig::new(0.1, false).unwrap();
 
-        let mut opt_config = OptimizationConfig::default();
-        opt_config.max_outer_iterations = 1;
-        opt_config.max_lbfgs_iterations = 5;
+        let opt_config = OptimizationConfig {
+            max_outer_iterations: 1,
+            max_lbfgs_iterations: 5,
+            ..Default::default()
+        };
 
         let result = solve_ecp(&w_init, &data, &config, &opt_config);
 

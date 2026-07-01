@@ -246,7 +246,7 @@ pub fn learn_dag(
     // ========== STEP 2: Hyperparameter Validation ==========
 
     // Validate lambda (L1 regularization)
-    if lambda < 0.0 || lambda > 1.0 {
+    if !(0.0..=1.0).contains(&lambda) {
         return Err(format!(
             "Regularization lambda={} not in valid range [0.0, 1.0]. \
              Typical values: 0.0 (no sparsity) or 0.1.",

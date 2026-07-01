@@ -29,6 +29,7 @@ pub fn random_dag(d: usize, edge_density: f64) -> Array2<f64> {
 }
 
 /// Generate random standard normal data matrix
+#[allow(dead_code)]
 pub fn random_data(n: usize, d: usize) -> Array2<f64> {
     let mut rng = rand::thread_rng();
     let mut data = Array2::<f64>::zeros((n, d));
@@ -46,6 +47,7 @@ pub fn random_data(n: usize, d: usize) -> Array2<f64> {
 ///
 /// Creates data from: X_i = sum_j W_{ij} * X_j + noise_i
 /// where W is acyclic and noise is standard normal.
+#[allow(dead_code)]
 pub fn data_from_sem(n: usize, d: usize, w: &Array2<f64>, noise_scale: f64) -> Array2<f64> {
     let mut rng = rand::thread_rng();
     let mut data = Array2::<f64>::zeros((n, d));
@@ -73,13 +75,14 @@ pub fn data_from_sem(n: usize, d: usize, w: &Array2<f64>, noise_scale: f64) -> A
 ///
 /// Generates n_nodes nodes with random edges (probability edge_prob).
 /// Ensures acyclicity via topological ordering.
+#[allow(dead_code)]
 pub fn generate_erdos_renyi_dag(
     n_nodes: usize,
     n_edges_expected: usize,
     n_samples: usize,
 ) -> (Array2<f64>, Array2<f64>) {
     let edge_prob = (n_edges_expected as f64) / ((n_nodes * n_nodes) as f64);
-    let edge_prob = edge_prob.min(1.0).max(0.0);
+    let edge_prob = edge_prob.clamp(0.0, 1.0);
 
     let w = random_dag(n_nodes, edge_prob);
     let data = data_from_sem(n_samples, n_nodes, &w, 1.0);
@@ -97,6 +100,7 @@ fn rand_normal<R: Rng>(rng: &mut R) -> f64 {
 }
 
 /// Simple timing instrumentation for profiling
+#[allow(dead_code)]
 pub struct TimingGuard {
     start: Instant,
     label: String,
@@ -104,6 +108,7 @@ pub struct TimingGuard {
 
 impl TimingGuard {
     /// Create new timing guard with label
+    #[allow(dead_code)]
     pub fn new(label: &str) -> Self {
         TimingGuard {
             start: Instant::now(),
@@ -112,6 +117,7 @@ impl TimingGuard {
     }
 
     /// Return elapsed time and print to stdout
+    #[allow(dead_code)]
     pub fn finish(self) -> f64 {
         let elapsed = self.start.elapsed().as_secs_f64();
         println!("[{}] Elapsed: {:.3}s", self.label, elapsed);
@@ -121,6 +127,7 @@ impl TimingGuard {
 
 /// Performance metrics structure
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct PerformanceMetrics {
     pub total_time_s: f64,
     pub iterations: usize,
@@ -130,6 +137,7 @@ pub struct PerformanceMetrics {
 
 impl PerformanceMetrics {
     /// Create metrics from timing data
+    #[allow(dead_code)]
     pub fn from_timing(total_time_s: f64, iterations: usize) -> Self {
         let time_per_iteration_ms = (total_time_s / iterations as f64) * 1000.0;
         let throughput_iters_per_sec = iterations as f64 / total_time_s;
@@ -143,6 +151,7 @@ impl PerformanceMetrics {
     }
 
     /// Print metrics in tabular format
+    #[allow(dead_code)]
     pub fn print(&self) {
         println!(
             "  Total: {:.3}s | Per-iter: {:.2}ms | Throughput: {:.1} iter/s",

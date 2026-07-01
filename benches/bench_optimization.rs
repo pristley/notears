@@ -109,8 +109,7 @@ fn bench_augmented_lagrangian_penalty(c: &mut Criterion) {
 
                     b.iter(|| {
                         let h = acyclicity::acyclicity_constraint(black_box(&w)).unwrap();
-                        let penalty = (rho / 2.0) * h * h;
-                        penalty
+                        (rho / 2.0) * h * h
                     });
                 },
             );
@@ -146,8 +145,7 @@ fn bench_composed_loss(c: &mut Criterion) {
                     // F(W) = MSE(W) + λ*L1(W)
                     let mse = scoring::mse_loss(black_box(&standardized), black_box(&w)).unwrap();
                     let l1 = scoring::l1_penalty(black_box(&w));
-                    let total_loss = mse + lambda * l1;
-                    total_loss
+                    mse + lambda * l1
                 });
             },
         );

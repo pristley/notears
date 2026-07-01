@@ -102,7 +102,7 @@ fn benchmark_full_solve(c: &mut Criterion) {
     let mut group = c.benchmark_group("full_solve");
     group.sample_size(10); // Reduce samples for long-running tests
 
-    let dims = vec![5, 10];
+    let dims = [5, 10];
     for dim in dims.iter() {
         group.bench_with_input(BenchmarkId::from_parameter(dim), dim, |b, &dim| {
             let data = generate_synthetic_dag(200, dim, 0.1);
