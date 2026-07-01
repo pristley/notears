@@ -101,7 +101,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ## Documentation
 
-Comprehensive documentation for all use cases:
+### 📚 Comprehensive Documentation Suite (~29,000 words)
+
+**Start here:** [NOTEARS Documentation Master Index](docs/NOTEARS_Documentation_Master_Index.md) — Navigation guide with 5 reading paths by role
+
+#### For Different Audiences:
+
+- **[🚀 Quick Reference Guide](docs/NOTEARS_Quick_Reference_Guide.md)** — Practical cheat sheet
+  - Algorithm comparison, hyperparameter tuning, troubleshooting (5 common issues), validation checklist, 10 pitfalls
+  - *Best for: Practitioners needing fast answers*
+
+- **[🛠️ Rust Implementation Guide](docs/NOTEARS_Rust_Implementation_Guide.md)** — Complete technical reference
+  - 7-phase implementation roadmap, mathematical foundations, code examples, production checklist
+  - *Best for: Software engineers implementing NOTEARS*
+
+- **[📊 Algorithm Analysis & Comparison](docs/NOTEARS_Algorithm_Analysis_and_Comparison.md)** — Deep dive for researchers
+  - Detailed comparison vs. PC/GES/LiNGAM/GOBNILP, 8-dimensional evaluation rubric, 4 real-world case studies
+  - *Best for: Data scientists and researchers*
+
+#### Technical References:
 
 - **[API Reference](docs/API.md)** — Complete type and function documentation with examples
 - **[Configuration Guide](docs/CONFIGURATION.md)** — Tuning for different data regimes (underdetermined, balanced, overdetermined)

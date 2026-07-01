@@ -15,10 +15,15 @@ Format follows [Semantic Versioning](https://semver.org/).
   - All code now passes `cargo clippy --all-targets --all-features -- -D warnings`
 
 ### Added
-- Comprehensive documentation suite:
-  - **API Reference** (docs/API.md) - Complete type and function documentation
-  - **Configuration Guide** (docs/CONFIGURATION.md) - Tuning for different data regimes
-  - **Troubleshooting Guide** (TROUBLESHOOTING.md) - Common issues and solutions
+- Comprehensive documentation suite (~29,000 words):
+  - **Documentation Master Index** (docs/NOTEARS_Documentation_Master_Index.md) - Navigation hub with 5 reading paths for different roles, FAQ, glossary, and cross-references
+  - **Quick Reference Guide** (docs/NOTEARS_Quick_Reference_Guide.md) - Algorithm comparison, hyperparameter tuning cheat sheet, troubleshooting for 5 common issues, validation checklist, 10 pitfalls to avoid (~4,000 words)
+  - **Rust Implementation Guide** (docs/NOTEARS_Rust_Implementation_Guide.md) - Complete technical reference with 7-phase implementation roadmap, mathematical foundations, code examples, and production deployment checklist (~8,000 words)
+  - **Algorithm Analysis and Comparison** (docs/NOTEARS_Algorithm_Analysis_and_Comparison.md) - Deep dive comparing NOTEARS vs. PC/GES/LiNGAM/GOBNILP, 8-dimensional evaluation rubric, practical recommendations, 4 real-world case studies with validation results (~15,000 words)
+- Enhanced README.md with structured documentation navigation for different audience types (practitioners, engineers, researchers)
+- API Reference (docs/API.md) - Complete type and function documentation
+- Configuration Guide (docs/CONFIGURATION.md) - Tuning for different data regimes
+- Troubleshooting Guide (TROUBLESHOOTING.md) - Common issues and solutions
 - GitHub Actions CI/CD pipelines:
   - Testing across stable, beta, nightly Rust versions
   - Rustfmt and Clippy linting
